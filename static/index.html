@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Stages · InternshipApplier</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script type="module" src="/static/js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <button id="menu-btn" class="icon-btn" type="button" aria-label="Afficher ou masquer le menu" data-icon="menu"></button>
+    <a class="brand" href="#inbox" aria-label="Boîte de réception">
+      <img src="/static/favicon.svg" alt="" width="32" height="32">
+      <span>Stages</span>
+    </a>
+    <form id="search-form" class="search" role="search" autocomplete="off">
+      <span class="search-icon" data-icon="search" aria-hidden="true"></span>
+      <input id="search-input" type="search" placeholder="Rechercher dans les offres (titre, entreprise, ville…)" aria-label="Rechercher dans les offres">
+    </form>
+    <div class="topbar-actions">
+      <button id="settings-btn" class="icon-btn" type="button" title="Paramètres" aria-label="Paramètres" data-icon="settings"></button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav id="sidebar" class="sidebar" aria-label="Dossiers">
+      <button id="find-btn" class="fab" type="button">
+        <span data-icon="travel_explore" aria-hidden="true"></span>
+        <span>Chercher des offres</span>
+      </button>
+      <ul class="nav" id="nav-main">
+        <li><a href="#inbox" data-view="inbox"><span data-icon="inbox"></span><span class="nav-label">Boîte de réception</span><span class="nav-count" data-count="unread"></span></a></li>
+        <li><a href="#starred" data-view="starred"><span data-icon="star"></span><span class="nav-label">Favoris</span><span class="nav-count" data-count="starred"></span></a></li>
+        <li><a href="#all" data-view="all"><span data-icon="list"></span><span class="nav-label">Toutes les offres</span><span class="nav-count" data-count="total"></span></a></li>
+        <li><a href="#archived" data-view="archived"><span data-icon="archive"></span><span class="nav-label">Archivées</span><span class="nav-count" data-count="archived"></span></a></li>
+      </ul>
+      <h2 class="nav-title">Suivi des candidatures</h2>
+      <ul class="nav" id="nav-status"></ul>
+      <h2 class="nav-title">Sources</h2>
+      <ul class="nav" id="nav-source"></ul>
+      <button id="add-offer-btn" class="nav-link-btn" type="button"><span data-icon="add_link"></span>Ajouter une offre par lien</button>
+    </nav>
+    <div id="sidebar-backdrop" class="backdrop" hidden></div>
+
+    <main class="main" id="main">
+      <div class="toolbar">
+        <label class="check-wrap" title="Tout sélectionner">
+          <input id="select-all" type="checkbox" aria-label="Tout sélectionner">
+        </label>
+        <button id="refresh-btn" class="icon-btn" type="button" title="Relancer la dernière recherche" aria-label="Relancer la dernière recherche" data-icon="refresh"></button>
+        <div id="bulk-actions" class="bulk" hidden>
+          <button class="icon-btn" type="button" data-bulk="archive" title="Archiver" aria-label="Archiver" data-icon="archive"></button>
+          <button class="icon-btn" type="button" data-bulk="unarchive" title="Remettre dans la boîte de réception" aria-label="Désarchiver" data-icon="unarchive"></button>
+          <button class="icon-btn" type="button" data-bulk="read" title="Marquer comme lu" aria-label="Marquer comme lu" data-icon="drafts"></button>
+          <button class="icon-btn" type="button" data-bulk="unread" title="Marquer comme non lu" aria-label="Marquer comme non lu" data-icon="mark_email_unread"></button>
+          <button class="icon-btn" type="button" data-bulk="status" title="Changer le statut" aria-label="Changer le statut" data-icon="label"></button>
+          <span id="bulk-count" class="muted"></span>
+        </div>
+        <div class="spacer"></div>
+        <span id="page-info" class="page-info"></span>
+        <button id="prev-page" class="icon-btn" type="button" title="Plus récentes" aria-label="Page précédente" data-icon="chevron_left"></button>
+        <button id="next-page" class="icon-btn" type="button" title="Plus anciennes" aria-label="Page suivante" data-icon="chevron_right"></button>
+      </div>
+      <div id="fetch-banner" class="banner" hidden></div>
+      <ul id="offer-list" class="offer-list" aria-label="Offres de stage"></ul>
+      <div id="empty-state" class="empty" hidden></div>
+    </main>
+  </div>
+
+  <!-- Volet de détails d'une offre -->
+  <aside id="drawer" class="drawer" hidden aria-label="Détails de l'offre">
+    <div class="drawer-head">
+      <span id="drawer-source" class="src"></span>
+      <div class="spacer"></div>
+      <button id="drawer-close" class="icon-btn" type="button" title="Fermer" aria-label="Fermer" data-icon="close"></button>
+    </div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
+
+  <!-- Fenêtre de rédaction (façon Gmail) -->
+  <section id="compose" class="compose" hidden aria-label="Rédiger une candidature">
+    <header class="compose-head">
+      <span id="compose-title" class="compose-title">Nouvelle candidature</span>
+      <button id="compose-min" class="icon-btn small" type="button" title="Réduire" aria-label="Réduire" data-icon="minimize"></button>
+      <button id="compose-expand" class="icon-btn small" type="button" title="Agrandir" aria-label="Agrandir" data-icon="open_in_full"></button>
+      <button id="compose-close" class="icon-btn small" type="button" title="Enregistrer et fermer" aria-label="Fermer" data-icon="close"></button>
+    </header>
+    <div class="compose-body">
+      <div class="compose-offer">
+        <a id="compose-offer-link" target="_blank" rel="noopener noreferrer"></a>
+        <span id="compose-offer-meta" class="muted"></span>
+        <button id="compose-desc-toggle" class="link-btn" type="button">Voir l'offre</button>
+      </div>
+      <div id="compose-desc" class="compose-desc" hidden></div>
+      <label class="compose-field"><span>À</span><input id="compose-to" type="text" inputmode="email" placeholder="adresse du recruteur (ex. rh@entreprise.fr)" spellcheck="false"></label>
+      <div id="compose-suggestions" class="suggestions" hidden></div>
+      <label class="compose-field"><span>Objet</span><input id="compose-subject" type="text" maxlength="500"></label>
+      <div class="ai-bar">
+        <button id="ai-generate" class="btn tonal" type="button"><span data-icon="auto_awesome"></span><span class="ai-generate-label">Rédiger avec l'IA</span></button>
+        <button id="ai-stop" class="btn" type="button" hidden><span data-icon="stop"></span>Arrêter</button>
+        <select id="ai-language" aria-label="Langue de l'email">
+          <option value="fr">Français</option>
+          <option value="en">Anglais</option>
+        </select>
+        <input id="ai-instructions" type="text" maxlength="2000" placeholder="Consigne facultative (ex. : plus court, insister sur mon projet Python)">
+      </div>
+      <div id="ai-status" class="ai-status" hidden></div>
+      <textarea id="compose-text" class="compose-text" placeholder="Votre message… (ou cliquez sur « Rédiger avec l'IA »)"></textarea>
+      <div id="compose-attachments" class="attachments"></div>
+      <div id="compose-error" class="form-error" hidden></div>
+    </div>
+    <footer class="compose-foot">
+      <button id="compose-send" class="btn primary" type="button">Envoyer</button>
+      <button id="compose-mailto" class="icon-btn" type="button" title="Ouvrir dans ma messagerie (sans pièce jointe)" aria-label="Ouvrir dans ma messagerie" data-icon="forward_to_inbox"></button>
+      <button id="compose-copy" class="icon-btn" type="button" title="Copier l'objet et le message" aria-label="Copier" data-icon="content_copy"></button>
+      <span id="compose-saved" class="muted small-text"></span>
+      <div class="spacer"></div>
+      <button id="compose-discard" class="icon-btn" type="button" title="Supprimer le brouillon" aria-label="Supprimer le brouillon" data-icon="delete"></button>
+    </footer>
+  </section>
+
+  <!-- Recherche d'offres -->
+  <dialog id="find-dialog" class="dialog">
+    <form method="dialog" id="find-form" novalidate>
+      <h2>Chercher des offres de stage</h2>
+      <p class="muted">Les nouvelles offres arrivent dans la boîte de réception. Les offres déjà connues ne sont pas dupliquées.</p>
+      <label class="field"><span>Mots-clés</span><input name="keywords" type="text" maxlength="200" placeholder="ex. data, marketing, développeur web (vide = tous les stages)"></label>
+      <label class="field"><span>Lieu</span><input name="location" type="text" maxlength="120" placeholder="ex. Lyon, Paris, Bretagne (vide = toute la France)"></label>
+      <fieldset class="field">
+        <legend>Sites</legend>
+        <div class="checks" id="find-sources"></div>
+      </fieldset>
+      <div class="field-row">
+        <label class="field"><span>Publiées depuis</span>
+          <select name="recency">
+            <option value="day">24 heures</option>
+            <option value="3days">3 jours</option>
+            <option value="week">7 jours</option>
+            <option value="month">30 jours</option>
+            <option value="all">Toutes dates</option>
+          </select>
+        </label>
+        <label class="field"><span>Offres max. par site</span><input name="max_per_source" type="number" min="10" max="300" step="1"></label>
+      </div>
+      <div id="find-error" class="form-error" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Annuler</button>
+        <button type="submit" class="btn primary" value="search">Lancer la recherche</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Ajout manuel -->
+  <dialog id="add-dialog" class="dialog">
+    <form method="dialog" id="add-form" novalidate>
+      <h2>Ajouter une offre par son lien</h2>
+      <p class="muted">Pour suivre une offre vue ailleurs (Indeed, JobTeaser, site d'entreprise…).</p>
+      <div class="field-row">
+        <label class="field grow"><span>Lien de l'offre</span><input name="url" type="url" required maxlength="2000" placeholder="https://…"></label>
+        <button type="button" class="btn tonal align-end" id="add-read">Lire l'offre</button>
+      </div>
+      <div id="add-info" class="form-info" hidden></div>
+      <label class="field"><span>Intitulé du poste *</span><input name="title" type="text" required maxlength="300"></label>
+      <div class="field-row">
+        <label class="field grow"><span>Entreprise</span><input name="company" type="text" maxlength="200"></label>
+        <label class="field grow"><span>Lieu</span><input name="location" type="text" maxlength="200"></label>
+      </div>
+      <label class="field"><span>Contrat / durée</span><input name="contract" type="text" maxlength="200" placeholder="ex. Stage · 6 mois"></label>
+      <label class="field"><span>Description (utile pour l'IA)</span><textarea name="description" rows="5" maxlength="100000"></textarea></label>
+      <div id="add-error" class="form-error" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Annuler</button>
+        <button type="submit" class="btn primary" value="add">Ajouter</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Paramètres -->
+  <dialog id="settings-dialog" class="dialog wide">
+    <form method="dialog" id="settings-form" novalidate>
+      <h2>Paramètres</h2>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="profile" aria-selected="true">Profil</button>
+        <button type="button" role="tab" data-tab="ai" aria-selected="false">IA (llama.cpp)</button>
+        <button type="button" role="tab" data-tab="mail" aria-selected="false">Envoi des emails</button>
+        <button type="button" role="tab" data-tab="docs" aria-selected="false">Documents</button>
+      </div>
+
+      <section class="tab-panel" data-panel="profile">
+        <p class="muted">Ces informations servent à l'IA pour personnaliser vos emails. Elle n'invente rien : plus votre profil est précis, meilleurs sont les emails.</p>
+        <div class="field-row">
+          <label class="field grow"><span>Prénom et nom</span><input name="full_name" type="text" maxlength="120"></label>
+          <label class="field grow"><span>Téléphone</span><input name="phone" type="tel" maxlength="40"></label>
+        </div>
+        <label class="field"><span>Email</span><input name="email" type="email" maxlength="254"></label>
+        <label class="field"><span>Formation actuelle</span><input name="education" type="text" maxlength="1000" placeholder="ex. Étudiant en 2e année de Master Informatique à l'Université de Caen"></label>
+        <label class="field"><span>Stage recherché</span><input name="internship" type="text" maxlength="1000" placeholder="ex. Stage de fin d'études de 6 mois à partir de février 2027"></label>
+        <label class="field"><span>Liens (LinkedIn, GitHub, portfolio… un par ligne)</span><textarea name="links" rows="2" maxlength="1000"></textarea></label>
+        <label class="field"><span>CV, compétences, expériences, projets</span><textarea name="cv_text" rows="9" maxlength="30000" placeholder="Collez le texte de votre CV, ou importez-le depuis un PDF (onglet Documents)."></textarea></label>
+        <div class="field-row">
+          <select id="cv-import-select" aria-label="Document à importer"></select>
+          <button type="button" class="btn" id="cv-import-btn">Importer le texte de ce document</button>
+        </div>
+        <label class="field"><span>Signature des emails (vide = nom, téléphone, email, liens)</span><textarea name="signature" rows="3" maxlength="1000"></textarea></label>
+      </section>
+
+      <section class="tab-panel" data-panel="ai" hidden>
+        <p class="muted">L'application utilise un serveur <strong>llama.cpp</strong> (<code>llama-server</code>) qui tourne sur votre machine. Exemple :<br><code>llama-server -hf ggml-org/gemma-3-4b-it-GGUF --no-mmproj -c 8192 --port 8080</code></p>
+        <label class="field"><span>Adresse du serveur</span><input name="llm_base_url" type="text" maxlength="300" placeholder="http://127.0.0.1:8080"></label>
+        <div class="field-row">
+          <label class="field grow"><span>Modèle (facultatif)</span><input name="llm_model" type="text" maxlength="300" placeholder="vide = modèle chargé par le serveur"></label>
+          <label class="field grow"><span>Clé API (facultative)</span><input name="llm_api_key" type="password" maxlength="300" autocomplete="off"></label>
+        </div>
+        <div class="field-row">
+          <label class="field"><span>Température (créativité)</span><input name="llm_temperature" type="number" min="0" max="2" step="0.05"></label>
+          <label class="field"><span>Longueur maximale (tokens)</span><input name="llm_max_tokens" type="number" min="128" max="8192" step="1"></label>
+          <label class="field"><span>Langue par défaut</span>
+            <select name="llm_language"><option value="fr">Français</option><option value="en">Anglais</option></select>
+          </label>
+        </div>
+        <label class="check"><input name="llm_disable_thinking" type="checkbox"> Désactiver la « réflexion » des modèles qui en ont une (Qwen3…) : beaucoup plus rapide</label>
+        <label class="field"><span>Consignes permanentes pour l'IA</span><textarea name="llm_extra_instructions" rows="3" maxlength="2000" placeholder="ex. Mentionne que je suis disponible dès janvier et mobile dans toute la France."></textarea></label>
+        <div class="field-row">
+          <button type="button" class="btn tonal" id="test-llm">Enregistrer et tester la connexion</button>
+          <span id="test-llm-result" class="test-result"></span>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="mail" hidden>
+        <p class="muted">Les emails partent de votre propre boîte, via SMTP. Avec Gmail : activez la validation en deux étapes puis créez un <strong>mot de passe d'application</strong> (myaccount.google.com/apppasswords).</p>
+        <div class="field-row">
+          <button type="button" class="btn" id="preset-gmail">Remplir pour Gmail</button>
+        </div>
+        <div class="field-row">
+          <label class="field grow"><span>Serveur SMTP</span><input name="smtp_host" type="text" maxlength="255" placeholder="smtp.gmail.com"></label>
+          <label class="field"><span>Port</span><input name="smtp_port" type="number" min="1" max="65535"></label>
+          <label class="field"><span>Sécurité</span>
+            <select name="smtp_security">
+              <option value="starttls">STARTTLS (587)</option>
+              <option value="ssl">SSL/TLS (465)</option>
+              <option value="none">Aucune</option>
+            </select>
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="field grow"><span>Identifiant</span><input name="smtp_username" type="text" maxlength="254" autocomplete="off" spellcheck="false"></label>
+          <label class="field grow"><span>Mot de passe</span><input name="smtp_password" type="password" maxlength="500" autocomplete="new-password"></label>
+        </div>
+        <div class="field-row">
+          <label class="field grow"><span>Nom de l'expéditeur (vide = votre nom)</span><input name="smtp_from_name" type="text" maxlength="120"></label>
+          <label class="field grow"><span>Adresse d'expédition (vide = votre email)</span><input name="smtp_from_email" type="email" maxlength="254"></label>
+        </div>
+        <label class="check"><input name="smtp_bcc_self" type="checkbox"> M'envoyer une copie cachée de chaque candidature</label>
+        <div class="field-row">
+          <button type="button" class="btn tonal" id="test-smtp">Enregistrer et tester la connexion</button>
+          <button type="button" class="btn" id="clear-smtp-password">Effacer le mot de passe enregistré</button>
+          <span id="test-smtp-result" class="test-result"></span>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="docs" hidden>
+        <p class="muted">Documents proposés en pièce jointe dans chaque candidature (CV, lettre…). PDF conseillé, 10 Mo maximum.</p>
+        <ul id="docs-list" class="docs-list"></ul>
+        <label class="btn tonal file-btn"><span data-icon="upload_file"></span>Ajouter un document<input id="docs-upload" type="file" accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.png,.jpg,.jpeg" multiple></label>
+      </section>
+
+      <div id="settings-error" class="form-error" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Fermer</button>
+        <button type="submit" class="btn primary" value="save">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Confirmation générique -->
+  <dialog id="confirm-dialog" class="dialog narrow">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <div id="confirm-text" class="confirm-text"></div>
+      <div class="dialog-actions">
+        <button type="submit" class="btn" value="cancel">Annuler</button>
+        <button type="submit" class="btn primary" value="ok" id="confirm-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="menu-layer"></div>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>
