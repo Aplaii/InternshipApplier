@@ -63,6 +63,17 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "search_sources": list(SEARCH_SOURCES),
     "search_recency": "week",
     "search_max_per_source": 60,
+    # Ne garder que les stages en intelligence artificielle (voir app/ai_filter.py).
+    "ai_only": True,
+    # --- Automatisation ---
+    "auto_enabled": False,          # relancer la recherche enregistrée à intervalle régulier
+    "auto_interval_hours": 6,
+    "auto_fetch_details": True,     # lire la description des nouvelles offres
+    "auto_draft": False,            # préparer un brouillon d'email avec l'IA (jamais envoyé seul)
+    "auto_draft_max": 5,            # brouillons au plus par passage
+    # État de la dernière recherche automatique (écrit par l'application, pas par l'utilisateur).
+    "auto_last_run": "",
+    "auto_last_summary": {},
 }
 
 # Jamais renvoyés au navigateur : l'API indique seulement s'ils sont renseignés.

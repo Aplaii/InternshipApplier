@@ -36,7 +36,12 @@
         <li><a href="#starred" data-view="starred"><span data-icon="star"></span><span class="nav-label">Favoris</span><span class="nav-count" data-count="starred"></span></a></li>
         <li><a href="#all" data-view="all"><span data-icon="list"></span><span class="nav-label">Toutes les offres</span><span class="nav-count" data-count="total"></span></a></li>
         <li><a href="#archived" data-view="archived"><span data-icon="archive"></span><span class="nav-label">Archivées</span><span class="nav-count" data-count="archived"></span></a></li>
+        <li><a href="#stats" data-view="stats"><span data-icon="insights"></span><span class="nav-label">Tableau de bord</span></a></li>
       </ul>
+      <button id="auto-indicator" class="auto-indicator" type="button" title="Recherche automatique (Paramètres > Automatisation)">
+        <span class="auto-dot" aria-hidden="true"></span>
+        <span id="auto-indicator-text" class="nav-label">Recherche automatique désactivée</span>
+      </button>
       <h2 class="nav-title">Suivi des candidatures</h2>
       <ul class="nav" id="nav-status"></ul>
       <h2 class="nav-title">Sources</h2>
@@ -46,7 +51,7 @@
     <div id="sidebar-backdrop" class="backdrop" hidden></div>
 
     <main class="main" id="main">
-      <div class="toolbar">
+      <div class="toolbar" id="list-toolbar">
         <label class="check-wrap" title="Tout sélectionner">
           <input id="select-all" type="checkbox" aria-label="Tout sélectionner">
         </label>
@@ -67,6 +72,7 @@
       <div id="fetch-banner" class="banner" hidden></div>
       <ul id="offer-list" class="offer-list" aria-label="Offres de stage"></ul>
       <div id="empty-state" class="empty" hidden></div>
+      <div id="stats-view" class="stats" hidden></div>
     </main>
   </div>
 
@@ -127,7 +133,7 @@
     <form method="dialog" id="find-form" novalidate>
       <h2>Chercher des offres de stage</h2>
       <p class="muted">Les nouvelles offres arrivent dans la boîte de réception. Les offres déjà connues ne sont pas dupliquées.</p>
-      <label class="field"><span>Mots-clés</span><input name="keywords" type="text" maxlength="200" placeholder="ex. data, marketing, développeur web (vide = tous les stages)"></label>
+      <label class="field"><span>Mots-clés</span><input name="keywords" type="text" maxlength="200" placeholder="ex. LLM, vision par ordinateur, NLP (vide = tous les stages en IA)"></label>
       <label class="field"><span>Lieu</span><input name="location" type="text" maxlength="120" placeholder="ex. Lyon, Paris, Bretagne (vide = toute la France)"></label>
       <fieldset class="field">
         <legend>Sites</legend>
@@ -145,6 +151,7 @@
         </label>
         <label class="field"><span>Offres max. par site</span><input name="max_per_source" type="number" min="10" max="300" step="1"></label>
       </div>
+      <label class="check"><input name="ai_only" type="checkbox"> Uniquement les stages en intelligence artificielle (IA, machine learning, data science, LLM, vision, NLP…)</label>
       <div id="find-error" class="form-error" hidden></div>
       <div class="dialog-actions">
         <button type="button" class="btn" data-close>Annuler</button>
@@ -187,6 +194,7 @@
         <button type="button" role="tab" data-tab="ai" aria-selected="false">IA (llama.cpp)</button>
         <button type="button" role="tab" data-tab="mail" aria-selected="false">Envoi des emails</button>
         <button type="button" role="tab" data-tab="docs" aria-selected="false">Documents</button>
+        <button type="button" role="tab" data-tab="auto" aria-selected="false">Automatisation</button>
       </div>
 
       <section class="tab-panel" data-panel="profile">
@@ -265,6 +273,22 @@
         <p class="muted">Documents proposés en pièce jointe dans chaque candidature (CV, lettre…). PDF conseillé, 10 Mo maximum.</p>
         <ul id="docs-list" class="docs-list"></ul>
         <label class="btn tonal file-btn"><span data-icon="upload_file"></span>Ajouter un document<input id="docs-upload" type="file" accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.png,.jpg,.jpeg" multiple></label>
+      </section>
+
+      <section class="tab-panel" data-panel="auto" hidden>
+        <p class="muted">L'application peut chercher seule de nouvelles offres pendant qu'elle est ouverte, avec les critères de votre dernière recherche (mots-clés, lieu, sites). Les emails ne partent <strong>jamais</strong> sans vous : l'IA prépare seulement des brouillons, que vous relisez avant d'envoyer.</p>
+        <label class="check"><input name="ai_only" type="checkbox"> N'afficher et ne garder que les stages en intelligence artificielle</label>
+        <label class="check"><input name="auto_enabled" type="checkbox"> Chercher de nouvelles offres automatiquement</label>
+        <div class="field-row">
+          <label class="field"><span>Toutes les (heures)</span><input name="auto_interval_hours" type="number" min="1" max="168" step="1"></label>
+          <label class="field"><span>Brouillons IA max. par passage</span><input name="auto_draft_max" type="number" min="1" max="30" step="1"></label>
+        </div>
+        <label class="check"><input name="auto_fetch_details" type="checkbox"> Lire la description des nouvelles offres (adresse du recruteur, thèmes IA plus précis)</label>
+        <label class="check"><input name="auto_draft" type="checkbox"> Préparer un brouillon d'email avec l'IA pour chaque nouvelle offre (serveur llama.cpp requis)</label>
+        <div id="auto-status" class="auto-status"></div>
+        <div class="field-row">
+          <button type="button" class="btn tonal" id="auto-run"><span data-icon="refresh"></span>Enregistrer et lancer maintenant</button>
+        </div>
       </section>
 
       <div id="settings-error" class="form-error" hidden></div>

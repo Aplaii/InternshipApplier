@@ -7,7 +7,10 @@ import {
 } from "./util.js";
 import { initCompose, openCompose } from "./compose.js";
 import { initDrawer, openDrawer, refreshDrawer } from "./drawer.js";
-import { initDialogs, openFindDialog, openSettings, openAddDialog, getSettings, loadSettings } from "./dialogs.js";
+import {
+  initDialogs, openFindDialog, openSettings, openAddDialog, getSettings, loadSettings, refreshAutomation,
+} from "./dialogs.js";
+import { renderStats } from "./stats.js";
 
 const $ = (id) => document.getElementById(id);
 const FOLDERS = ["inbox", "starred", "all", "archived", "unread"];
@@ -31,7 +34,9 @@ const state = {
 
 function parseHash() {
   const hash = decodeURIComponent(window.location.hash.replace(/^#/, "")) || "inbox";
-  const [kind, value] = hash.split("/");
+  const [kind, ...rest] = hash.split("/");
+  const value = rest.join("/");
+  if (kind === "stats") return { folder: "all", status: null, source: null, key: "stats", stats: true };
   if (kind === "status" && STATUSES.some((s) => s.id === value)) {
     return { folder: "all", status: value, source: null, key: `status/${value}` };
   }
@@ -42,6 +47,7 @@ function parseHash() {
 
 function viewTitle() {
   const { folder, status, source } = state.view;
+  if (state.view.stats) return "Tableau de bord";
   if (status) return statusInfo(status).label;
   if (source) return sourceLabel(source);
   return { inbox: "Boîte de réception", starred: "Favoris", all: "Toutes les offres", archived: "Archivées", unread: "Non lues" }[folder];
@@ -93,7 +99,20 @@ function renderNav() {
 
 // --------------------------------------------------------------------------- chargement
 
+/** Affiche soit la liste des offres, soit le tableau de bord. */
+function showView() {
+  const stats = Boolean(state.view.stats);
+  $("stats-view").hidden = !stats;
+  for (const id of ["list-toolbar", "offer-list"]) $(id).hidden = stats;
+  if (stats) {
+    $("empty-state").hidden = true;
+    renderStats(sourceLabel);
+  }
+  return !stats;
+}
+
 async function loadOffers() {
+  if (!showView()) return;
   const seq = ++state.requestSeq;
   const params = new URLSearchParams({ folder: state.view.folder, page: state.page, page_size: state.pageSize });
   if (state.view.status) params.set("status", state.view.status);
@@ -172,6 +191,9 @@ function renderRow(offer) {
     }));
   }
   if (offer.has_draft) chips.push(el("span", { class: "chip draft-chip", text: "Brouillon", title: "Un brouillon d'email est enregistré" }));
+  for (const topic of (offer.ai_topics || []).slice(0, 2)) {
+    chips.push(el("span", { class: "chip topic-chip", text: topic, title: "Thème IA détecté dans l'offre" }));
+  }
   if (offer.emails_count > 1) chips.push(el("span", { class: "chip count-chip", text: `${offer.emails_count} emails`, title: "Emails envoyés pour cette offre" }));
 
   const snippet = [offer.location, offer.contract].filter(Boolean).join(" · ");
@@ -215,25 +237,30 @@ function renderList() {
     $("empty-state").hidden = true;
     return;
   }
+  const hidden = state.counts?.hidden_non_ai || 0;
+  const hiddenNote = hidden
+    ? el("p", { class: "muted", text: `${hidden} offre${hidden > 1 ? "s" : ""} hors IA ${hidden > 1 ? "sont masquées" : "est masquée"} (filtre « stages en IA uniquement » dans Paramètres > Automatisation).` })
+    : null;
   if (state.q) {
-    showEmpty([el("p", { text: `Aucune offre ne correspond à « ${state.q} » dans ce dossier.` })]);
+    showEmpty([el("p", { text: `Aucune offre ne correspond à « ${state.q} » dans ce dossier.` }), hiddenNote]);
   } else if (state.counts && state.counts.total === 0) {
     showEmpty([
       el("p", { class: "empty-title", text: "Aucune offre pour l'instant" }),
-      el("p", { class: "muted", text: "Lancez une recherche sur HelloWork, LinkedIn et Welcome to the Jungle. Pensez aussi à remplir votre profil dans les paramètres pour que l'IA rédige vos emails." }),
+      el("p", { class: "muted", text: "Lancez une recherche de stages en intelligence artificielle sur HelloWork, LinkedIn et Welcome to the Jungle, ou activez la recherche automatique. Pensez aussi à remplir votre profil dans les paramètres pour que l'IA rédige vos emails." }),
+      hiddenNote,
       el("div", { class: "empty-actions" }, [
         el("button", { type: "button", class: "btn primary", text: "Chercher des offres", onclick: () => openFindDialog() }),
         el("button", { type: "button", class: "btn", text: "Paramètres", onclick: () => openSettings() }),
       ]),
     ]);
   } else {
-    showEmpty([el("p", { class: "muted", text: "Rien ici pour le moment." })]);
+    showEmpty([el("p", { class: "muted", text: "Rien ici pour le moment." }), hiddenNote]);
   }
 }
 
 function showEmpty(children) {
   const box = $("empty-state");
-  box.replaceChildren(...children);
+  box.replaceChildren(...children.filter(Boolean));
   box.hidden = false;
   updateToolbar();
 }
@@ -430,6 +457,7 @@ function bindToolbar() {
       sources: settings.search_sources,
       recency: settings.search_recency,
       max_per_source: settings.search_max_per_source,
+      ai_only: settings.ai_only,
     });
   });
   $("prev-page").addEventListener("click", () => {
@@ -502,6 +530,17 @@ function bindSearch() {
   });
 }
 
+/** Lien « #search/terme » (tableau de bord) : recherche le terme dans toutes les offres. */
+function applySearchHash() {
+  const hash = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+  if (!hash.startsWith("search/")) return false;
+  const q = hash.slice("search/".length).trim();
+  $("search-input").value = q;
+  state.q = q;
+  window.location.hash = "all"; // déclenche un nouveau hashchange qui charge la liste
+  return true;
+}
+
 function bindSidebar() {
   const mobile = () => window.matchMedia("(max-width: 900px)").matches;
   const closeMobile = () => {
@@ -525,6 +564,7 @@ function bindSidebar() {
   $("add-offer-btn").addEventListener("click", () => openAddDialog());
   $("settings-btn").addEventListener("click", () => openSettings());
   window.addEventListener("hashchange", () => {
+    if (applySearchHash()) return;
     state.view = parseHash();
     state.page = 1;
     state.selected.clear();
@@ -562,14 +602,19 @@ export async function runSearch(params) {
   $("refresh-btn").classList.add("spinning");
   $("refresh-btn").disabled = true;
   const names = params.sources.map((s) => SOURCE_SHORT[s] || s).join(", ");
-  const what = [params.keywords && `« ${params.keywords} »`, params.location].filter(Boolean).join(" · ");
+  const what = [params.keywords ? `« ${params.keywords} »` : "stages en IA", params.location].filter(Boolean).join(" · ");
   showBanner("loading", `Recherche en cours sur ${names}…`, what ? [{ text: what }] : []);
   try {
     const result = await api("/api/fetch", { method: "POST", json: params });
     await loadSettings();
+    const kept = (r) => (result.ai_only ? `, dont ${r.kept} en IA` : "");
     const lines = result.results.map((r) => (r.error
-      ? { text: `${r.label} : ${r.error}${r.found ? ` (${r.found} offres récupérées avant l'erreur, dont ${r.new} nouvelles)` : ""}`, error: true }
-      : { text: `${r.label} : ${r.found} offre${r.found > 1 ? "s" : ""} trouvée${r.found > 1 ? "s" : ""}, ${r.new} nouvelle${r.new > 1 ? "s" : ""}` }));
+      ? { text: `${r.label} : ${r.error}${r.found ? ` (${r.found} offres récupérées avant l'erreur${kept(r)}, ${r.new} nouvelles)` : ""}`, error: true }
+      : { text: `${r.label} : ${r.found} offre${r.found > 1 ? "s" : ""} trouvée${r.found > 1 ? "s" : ""}${kept(r)}, ${r.new} nouvelle${r.new > 1 ? "s" : ""}` }));
+    if (result.filtered_total) {
+      lines.push({ text: `${result.filtered_total} offre${result.filtered_total > 1 ? "s" : ""} hors IA écartée${result.filtered_total > 1 ? "s" : ""}.` });
+    }
+    if (result.details) lines.push({ text: `Description lue pour ${result.details} nouvelle${result.details > 1 ? "s" : ""} offre${result.details > 1 ? "s" : ""}.` });
     const failed = result.results.some((r) => r.error);
     const n = result.new_total;
     showBanner(failed ? "warn" : "ok", n ? `${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""}` : "Aucune nouvelle offre", lines);
@@ -589,6 +634,33 @@ export async function runSearch(params) {
   }
 }
 
+// --------------------------------------------------------------------------- recherche automatique
+
+let lastAutoRun = null;
+
+/** Vérifie chaque minute si la recherche automatique a ajouté des offres. */
+async function pollAutomation() {
+  let status;
+  try {
+    status = await refreshAutomation();
+  } catch {
+    return;
+  }
+  const run = status.last_run;
+  if (lastAutoRun !== null && run && run !== lastAutoRun) {
+    const summary = status.last_summary || {};
+    const n = summary.new_total || 0;
+    const drafts = summary.drafted ? ` · ${summary.drafted} brouillon${summary.drafted > 1 ? "s" : ""} préparé${summary.drafted > 1 ? "s" : ""}` : "";
+    if (n || summary.errors?.length) {
+      toast(n
+        ? `Recherche automatique : ${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} en IA${drafts}`
+        : `Recherche automatique : ${summary.errors.join(" ; ")}`, { error: !n, timeout: 10000 });
+    }
+    await refreshAll();
+  }
+  lastAutoRun = run || "";
+}
+
 // --------------------------------------------------------------------------- démarrage
 
 async function init() {
@@ -600,6 +672,7 @@ async function init() {
   bindToolbar();
   bindSearch();
   bindSidebar();
+  applySearchHash();
   state.view = parseHash();
   try {
     const [meta] = await Promise.all([api("/api/meta"), loadSettings()]);
@@ -609,6 +682,8 @@ async function init() {
     return;
   }
   await refreshAll();
+  pollAutomation();
+  setInterval(pollAutomation, 60000);
 }
 
 init();

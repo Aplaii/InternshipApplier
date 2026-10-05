@@ -22,8 +22,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import __version__, assistant, config, db, documents, llm, mailer, prompts
+from .automation import Automation
 from .scrapers import (
-    SEARCHERS, ScrapedOffer, SearchParams, SourceError, fetch_details, identify_url, make_client,
+    ScrapedOffer, SearchParams, SourceError, fetch_details, identify_url, make_client,
     source_label_for_url,
 )
 from .scrapers.base import clean, extract_emails
@@ -69,6 +70,7 @@ class FetchRequest(BaseModel):
     sources: list[SearchSource] = Field(min_length=1)
     recency: Recency = "week"
     max_per_source: int = Field(60, ge=10, le=300)
+    ai_only: bool | None = None  # None = paramètre enregistré
 
 
 class ImportRequest(BaseModel):
@@ -128,6 +130,12 @@ class SettingsUpdate(BaseModel):
     search_sources: list[SearchSource] | None = None
     search_recency: Recency | None = None
     search_max_per_source: int | None = Field(None, ge=10, le=300)
+    ai_only: bool | None = None
+    auto_enabled: bool | None = None
+    auto_interval_hours: float | None = Field(None, ge=1, le=168)
+    auto_fetch_details: bool | None = None
+    auto_draft: bool | None = None
+    auto_draft_max: int | None = Field(None, ge=1, le=30)
 
 
 # --------------------------------------------------------------------------- sécurité locale
@@ -185,6 +193,10 @@ def _public_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _ai_only() -> bool:
+    return bool(_load_settings().get("ai_only"))
+
+
 def _with_label(offer: dict[str, Any]) -> dict[str, Any]:
     source = offer.get("source", "")
     if source == "manual":
@@ -234,10 +246,20 @@ def _ndjson(event: dict[str, Any]) -> bytes:
 
 
 def create_app() -> FastAPI:
+    automation = Automation()
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         db.init_db()
-        yield
+        task = asyncio.create_task(automation.scheduler())
+        try:
+            yield
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     app = FastAPI(title="InternshipApplier", version=__version__, lifespan=lifespan)
     allowed_hosts = [
@@ -245,7 +267,7 @@ def create_app() -> FastAPI:
     ]
     app.add_middleware(LocalSecurityMiddleware)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
-    fetch_lock = asyncio.Lock()
+    app.state.automation = automation
 
     # ------------------------------------------------------------------- offres
 
@@ -267,9 +289,11 @@ def create_app() -> FastAPI:
         page: int = Query(1, ge=1),
         page_size: int = Query(50, ge=1, le=200),
     ) -> dict[str, Any]:
+        ai_only = _ai_only()
         with db.get_conn() as conn:
             items, total = db.list_offers(
-                conn, folder=folder, status=status, source=source, q=q, page=page, page_size=page_size
+                conn, folder=folder, status=status, source=source, q=q, ai_only=ai_only,
+                page=page, page_size=page_size,
             )
         return {
             "items": [_with_label(item) for item in items],
@@ -280,8 +304,15 @@ def create_app() -> FastAPI:
 
     @app.get("/api/counts")
     def get_counts() -> dict[str, Any]:
+        ai_only = _ai_only()
         with db.get_conn() as conn:
-            return db.counts(conn)
+            return {**db.counts(conn, ai_only=ai_only), "ai_only": ai_only}
+
+    @app.get("/api/stats")
+    def get_stats() -> dict[str, Any]:
+        ai_only = _ai_only()
+        with db.get_conn() as conn:
+            return {**db.stats(conn, ai_only=ai_only), "ai_only": ai_only}
 
     @app.get("/api/offers/{offer_id}")
     def get_offer(offer_id: int) -> dict[str, Any]:
@@ -377,52 +408,45 @@ def create_app() -> FastAPI:
 
     @app.post("/api/fetch")
     async def fetch_offers(req: FetchRequest) -> dict[str, Any]:
-        if fetch_lock.locked():
+        if automation.lock.locked():
             raise HTTPException(409, "Une recherche est déjà en cours.")
-        async with fetch_lock:
+        async with automation.lock:
             params = SearchParams(
                 keywords=req.keywords.strip(), location=req.location.strip(),
                 recency=req.recency, max_results=req.max_per_source,
             )
             sources = list(dict.fromkeys(req.sources))
 
-            def remember() -> None:
+            def remember() -> dict[str, Any]:
                 with db.get_conn() as conn:
-                    db.save_settings(conn, {
+                    changes: dict[str, Any] = {
                         "search_keywords": params.keywords, "search_location": params.location,
                         "search_sources": sources, "search_recency": params.recency,
                         "search_max_per_source": params.max_results,
-                    })
+                    }
+                    if req.ai_only is not None:
+                        changes["ai_only"] = req.ai_only
+                    db.save_settings(conn, changes)
+                    return db.load_settings(conn)
 
-            await run_in_threadpool(remember)
+            settings = await run_in_threadpool(remember)
+            result = await automation.search(params, sources, ai_only=bool(settings.get("ai_only")))
+            new_ids = result.pop("new_ids")
+            if settings.get("auto_fetch_details"):
+                result["details"] = await automation.fetch_new_details(new_ids)
+        return result
 
-            async def run(source: str) -> tuple[str, list[ScrapedOffer], str | None]:
-                try:
-                    return source, await SEARCHERS[source](client, params), None
-                except SourceError as exc:
-                    return source, exc.partial, exc.message
-                except Exception as exc:  # bug d'analyse, site modifié…
-                    log.exception("Recherche %s en échec", source)
-                    return source, [], f"Erreur inattendue ({type(exc).__name__}) : le site a peut-être changé."
+    @app.get("/api/automation")
+    async def automation_status() -> dict[str, Any]:
+        return await automation.status()
 
-            async with make_client() as client:
-                outcomes = await asyncio.gather(*(run(s) for s in sources))
-
-            def save() -> list[dict[str, Any]]:
-                with db.get_conn() as conn:
-                    return [
-                        {
-                            "source": source,
-                            "label": config.SOURCE_LABELS[source],
-                            "found": len(offers),
-                            "new": db.upsert_offers(conn, offers),
-                            "error": error,
-                        }
-                        for source, offers, error in outcomes
-                    ]
-
-            results = await run_in_threadpool(save)
-        return {"results": results, "new_total": sum(r["new"] for r in results)}
+    @app.post("/api/automation/run", status_code=202)
+    async def automation_run() -> dict[str, Any]:
+        """Lance tout de suite la recherche automatique, en arrière-plan (suivi : GET /api/automation)."""
+        if automation.lock.locked():
+            raise HTTPException(409, "Une recherche est déjà en cours.")
+        await automation.start_now()
+        return await automation.status()
 
     # ------------------------------------------------------------------- IA & email
 
@@ -509,6 +533,8 @@ def create_app() -> FastAPI:
         with db.get_conn() as conn:
             db.save_settings(conn, changes)
             settings = db.load_settings(conn)
+        if any(key.startswith("auto_") for key in changes):
+            automation.wake()
         return _public_settings(settings)
 
     @app.post("/api/settings/test-llm")

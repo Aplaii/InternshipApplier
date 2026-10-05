@@ -20,8 +20,11 @@ const TEXT_KEYS = [
   "llm_base_url", "llm_model", "llm_language", "llm_extra_instructions",
   "smtp_host", "smtp_security", "smtp_username", "smtp_from_name", "smtp_from_email",
 ];
-const NUMBER_KEYS = { llm_temperature: parseFloat, llm_max_tokens: (v) => parseInt(v, 10), smtp_port: (v) => parseInt(v, 10) };
-const BOOL_KEYS = ["llm_disable_thinking", "smtp_bcc_self"];
+const int = (v) => parseInt(v, 10);
+const NUMBER_KEYS = {
+  llm_temperature: parseFloat, llm_max_tokens: int, smtp_port: int, auto_interval_hours: parseFloat, auto_draft_max: int,
+};
+const BOOL_KEYS = ["llm_disable_thinking", "smtp_bcc_self", "ai_only", "auto_enabled", "auto_fetch_details", "auto_draft"];
 const SECRET_KEYS = ["llm_api_key", "smtp_password"];
 
 export function getSettings() {
@@ -54,6 +57,7 @@ export function openFindDialog() {
   form.elements.location.value = s.search_location ?? "France";
   form.elements.recency.value = s.search_recency || "week";
   form.elements.max_per_source.value = s.search_max_per_source || 60;
+  form.elements.ai_only.checked = s.ai_only !== false;
   const chosen = new Set(s.search_sources || SEARCH_SOURCES.map((x) => x.id));
   $("find-sources").replaceChildren(...SEARCH_SOURCES.map((source) => {
     const input = el("input", { type: "checkbox", name: "sources", value: source.id });
@@ -88,6 +92,7 @@ function bindFindDialog() {
       sources,
       recency: form.elements.recency.value,
       max_per_source: max,
+      ai_only: form.elements.ai_only.checked,
     });
   });
 }
@@ -276,8 +281,92 @@ export async function openSettings(tab = "profile") {
   $("test-llm-result").textContent = "";
   $("test-smtp-result").textContent = "";
   selectTab(tab);
-  await refreshDocuments();
+  await Promise.all([refreshDocuments(), refreshAutomation().catch(() => null)]);
   $("settings-dialog").showModal();
+}
+
+// --------------------------------------------------------------------------- automatisation
+
+const RUNNING_LABELS = {
+  search: "Recherche en cours sur les sites…",
+  details: "Lecture des nouvelles offres…",
+  drafts: "Rédaction des brouillons par l'IA…",
+};
+
+function relativeTime(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const minutes = Math.round((date - Date.now()) / 60000);
+  const rtf = new Intl.RelativeTimeFormat("fr-FR", { numeric: "auto" });
+  if (Math.abs(minutes) < 60) return rtf.format(minutes, "minute");
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 48) return rtf.format(hours, "hour");
+  return rtf.format(Math.round(hours / 24), "day");
+}
+
+function summaryText(summary) {
+  if (!summary) return "";
+  const parts = [`${summary.new_total} nouvelle${summary.new_total > 1 ? "s" : ""} offre${summary.new_total > 1 ? "s" : ""}`];
+  if (summary.filtered_total) parts.push(`${summary.filtered_total} hors IA écartée${summary.filtered_total > 1 ? "s" : ""}`);
+  if (summary.details) parts.push(`${summary.details} description${summary.details > 1 ? "s" : ""} lue${summary.details > 1 ? "s" : ""}`);
+  if (summary.drafted) parts.push(`${summary.drafted} brouillon${summary.drafted > 1 ? "s" : ""} préparé${summary.drafted > 1 ? "s" : ""}`);
+  return parts.join(" · ");
+}
+
+/** Met à jour l'indicateur de la barre latérale et l'onglet Automatisation. Renvoie l'état. */
+export async function refreshAutomation() {
+  const status = await api("/api/automation");
+  const indicator = $("auto-indicator");
+  indicator.classList.toggle("on", status.enabled);
+  indicator.classList.toggle("running", Boolean(status.running));
+  let label = "Recherche automatique désactivée";
+  if (status.running) label = RUNNING_LABELS[status.running] || "Recherche en cours…";
+  else if (status.enabled && status.next_run) label = `Auto : ${relativeTime(status.next_run)}`;
+  $("auto-indicator-text").textContent = label;
+  indicator.title = `${label} — cliquer pour régler la recherche automatique`;
+
+  const summary = status.last_summary;
+  const lines = [];
+  if (status.running) lines.push(el("p", {}, [el("span", { class: "spinner small" }), ` ${label}`]));
+  if (status.last_run) {
+    lines.push(el("p", {}, [
+      el("strong", { text: `Dernière recherche ${relativeTime(status.last_run)}` }),
+      summary?.trigger === "manual" ? " (lancée à la main)" : "",
+      summary ? ` : ${summaryText(summary)}.` : "",
+    ]));
+    for (const error of summary?.errors || []) lines.push(el("p", { class: "error-text", text: error }));
+    if (summary?.draft_error) lines.push(el("p", { class: "error-text", text: `Brouillons IA : ${summary.draft_error}` }));
+  } else {
+    lines.push(el("p", { class: "muted", text: "Aucune recherche automatique pour l'instant." }));
+  }
+  if (status.enabled && status.next_run && !status.running) {
+    lines.push(el("p", { class: "muted", text: `Prochaine recherche ${relativeTime(status.next_run)} (si l'application est ouverte).` }));
+  }
+  $("auto-status").replaceChildren(...lines);
+  $("auto-run").disabled = Boolean(status.running);
+  return status;
+}
+
+async function runAutomationNow() {
+  if (!(await saveSettings())) return;
+  try {
+    await api("/api/automation/run", { method: "POST" });
+  } catch (error) {
+    showFormError("settings-error", error.message);
+    return;
+  }
+  let status = await refreshAutomation();
+  while (status.running) {
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
+    try {
+      status = await refreshAutomation();
+    } catch {
+      break;
+    }
+  }
+  const n = status.last_summary?.new_total || 0;
+  toast(n ? `${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} en IA.` : "Recherche terminée : aucune nouvelle offre.", { timeout: 6000 });
+  await ctx.onChange();
 }
 
 // --------------------------------------------------------------------------- documents
@@ -354,6 +443,8 @@ function bindSettingsDialog() {
   });
   $("test-llm").addEventListener("click", () => runTest("test-llm", "test-llm-result", "/api/settings/test-llm"));
   $("test-smtp").addEventListener("click", () => runTest("test-smtp", "test-smtp-result", "/api/settings/test-smtp"));
+  $("auto-run").addEventListener("click", runAutomationNow);
+  $("auto-indicator").addEventListener("click", () => openSettings("auto"));
   $("preset-gmail").addEventListener("click", () => {
     form.elements.smtp_host.value = "smtp.gmail.com";
     form.elements.smtp_port.value = 587;

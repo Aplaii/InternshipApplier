@@ -11,7 +11,7 @@ from aiosmtpd.controller import Controller
 from fastapi.testclient import TestClient
 
 from app import db, main
-from app.scrapers import OfferDetails, ScrapedOffer, SourceError
+from app.scrapers import SEARCHERS, OfferDetails, ScrapedOffer, SourceError
 from conftest import FIXTURES, MockLLM, read_ndjson, sse_chunks
 
 
@@ -23,7 +23,7 @@ def add_offers(*offers: ScrapedOffer) -> list[int]:
 
 def sample(source_id="1", **kwargs) -> ScrapedOffer:
     data = {"source": "hellowork", "source_id": source_id, "url": f"https://www.hellowork.com/fr-fr/emplois/{source_id}.html",
-            "title": "Stage Data Analyst H/F", "company": "ACME", "location": "Lyon", "contract": "Stage · 6 mois",
+            "title": "Stage Data Scientist IA H/F", "company": "ACME", "location": "Lyon", "contract": "Stage · 6 mois",
             "published_at": "2026-09-30T10:00:00Z"}
     data.update(kwargs)
     return ScrapedOffer(**data)
@@ -180,14 +180,14 @@ def test_fetch_saves_offers_and_reports_errors(client, monkeypatch):
     async def wttj(_client, params):
         raise ValueError("structure inattendue")
 
-    monkeypatch.setitem(main.SEARCHERS, "hellowork", hellowork)
-    monkeypatch.setitem(main.SEARCHERS, "linkedin", linkedin)
-    monkeypatch.setitem(main.SEARCHERS, "wttj", wttj)
+    monkeypatch.setitem(SEARCHERS, "hellowork", hellowork)
+    monkeypatch.setitem(SEARCHERS, "linkedin", linkedin)
+    monkeypatch.setitem(SEARCHERS, "wttj", wttj)
     payload = {"keywords": " data ", "location": "Lyon", "sources": ["hellowork", "linkedin", "wttj"],
                "recency": "week", "max_per_source": 20}
     result = client.post("/api/fetch", json=payload).json()
     by_source = {r["source"]: r for r in result["results"]}
-    assert by_source["hellowork"] == {"source": "hellowork", "label": "HelloWork", "found": 2, "new": 2, "error": None}
+    assert by_source["hellowork"] == {"source": "hellowork", "label": "HelloWork", "found": 2, "kept": 2, "new": 2, "error": None}
     assert by_source["linkedin"]["new"] == 1 and "429" in by_source["linkedin"]["error"]
     assert by_source["wttj"]["found"] == 0 and "ValueError" in by_source["wttj"]["error"]
     assert result["new_total"] == 3
