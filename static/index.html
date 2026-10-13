@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Stages · InternshipApplier</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/css/app.css">
   <script type="module" src="/static/js/app.js"></script>
 </head>
@@ -13,8 +13,8 @@
   <header class="topbar">
     <button id="menu-btn" class="icon-btn" type="button" aria-label="Afficher ou masquer le menu" data-icon="menu"></button>
     <a class="brand" href="#inbox" aria-label="Boîte de réception">
-      <img src="/static/favicon.svg" alt="" width="32" height="32">
-      <span>Stages</span>
+      <img src="/favicon.svg" alt="" width="32" height="32">
+      <span data-profile="brand">Stages</span>
     </a>
     <form id="search-form" class="search" role="search" autocomplete="off">
       <span class="search-icon" data-icon="search" aria-hidden="true"></span>
@@ -133,8 +133,9 @@
     <form method="dialog" id="find-form" novalidate>
       <h2>Chercher des offres de stage</h2>
       <p class="muted">Les nouvelles offres arrivent dans la boîte de réception. Les offres déjà connues ne sont pas dupliquées.</p>
-      <label class="field"><span>Mots-clés</span><input name="keywords" type="text" maxlength="200" placeholder="ex. LLM, vision par ordinateur, NLP (vide = tous les stages en IA)"></label>
-      <label class="field"><span>Lieu</span><input name="location" type="text" maxlength="120" placeholder="ex. Lyon, Paris, Bretagne (vide = toute la France)"></label>
+      <label class="field"><span>Mots-clés</span><input name="keywords" type="text" maxlength="200" data-profile-placeholder="keywords_placeholder" placeholder="ex. LLM, vision par ordinateur, NLP (vide = tous les stages en IA)"></label>
+      <label class="field"><span>Lieu</span><input name="location" type="text" maxlength="120" data-profile-placeholder="location_placeholder" placeholder="ex. Lyon, Paris, Bretagne (vide = toute la France)"></label>
+      <p class="muted small-text" data-profile-region hidden>Zone de recherche : <strong data-profile="region_label"></strong>. Les offres situées ailleurs sont écartées.</p>
       <fieldset class="field">
         <legend>Sites</legend>
         <div class="checks" id="find-sources"></div>
@@ -151,7 +152,7 @@
         </label>
         <label class="field"><span>Offres max. par site</span><input name="max_per_source" type="number" min="10" max="300" step="1"></label>
       </div>
-      <label class="check"><input name="ai_only" type="checkbox"> Uniquement les stages en intelligence artificielle (IA, machine learning, data science, LLM, vision, NLP…)</label>
+      <label class="check"><input name="ai_only" type="checkbox"> <span data-profile="filter_label">Uniquement les stages en intelligence artificielle (IA, machine learning, data science, LLM, vision, NLP…)</span></label>
       <div id="find-error" class="form-error" hidden></div>
       <div class="dialog-actions">
         <button type="button" class="btn" data-close>Annuler</button>
@@ -277,13 +278,13 @@
 
       <section class="tab-panel" data-panel="auto" hidden>
         <p class="muted">L'application peut chercher seule de nouvelles offres pendant qu'elle est ouverte, avec les critères de votre dernière recherche (mots-clés, lieu, sites). Les emails ne partent <strong>jamais</strong> sans vous : l'IA prépare seulement des brouillons, que vous relisez avant d'envoyer.</p>
-        <label class="check"><input name="ai_only" type="checkbox"> N'afficher et ne garder que les stages en intelligence artificielle</label>
+        <label class="check"><input name="ai_only" type="checkbox"> <span>N'afficher et ne garder que les <span data-profile="domain_label">stages en IA</span></span></label>
         <label class="check"><input name="auto_enabled" type="checkbox"> Chercher de nouvelles offres automatiquement</label>
         <div class="field-row">
           <label class="field"><span>Toutes les (heures)</span><input name="auto_interval_hours" type="number" min="1" max="168" step="1"></label>
           <label class="field"><span>Brouillons IA max. par passage</span><input name="auto_draft_max" type="number" min="1" max="30" step="1"></label>
         </div>
-        <label class="check"><input name="auto_fetch_details" type="checkbox"> Lire la description des nouvelles offres (adresse du recruteur, thèmes IA plus précis)</label>
+        <label class="check"><input name="auto_fetch_details" type="checkbox"> Lire la description des nouvelles offres (adresse du recruteur, thèmes plus précis)</label>
         <label class="check"><input name="auto_draft" type="checkbox"> Préparer un brouillon d'email avec l'IA pour chaque nouvelle offre (serveur llama.cpp requis)</label>
         <div id="auto-status" class="auto-status"></div>
         <div class="field-row">

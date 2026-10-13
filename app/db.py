@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import ai_filter, config
+from . import config, profiles
 
 SCHEMA_VERSION = 2
 
@@ -143,14 +143,23 @@ def init_db() -> None:
         columns = {r["name"] for r in conn.execute("PRAGMA table_info(offers)")}
         if "ai_topics" not in columns:  # base créée avant le filtre IA (version 1)
             conn.execute("ALTER TABLE offers ADD COLUMN ai_topics TEXT NOT NULL DEFAULT ''")
-        if version < SCHEMA_VERSION:
+        # Les thèmes dépendent du profil : on les recalcule si la base change de profil
+        # (ou après une mise à jour du schéma).
+        profile_id = json.dumps(profiles.current().id)
+        stored = conn.execute("SELECT value FROM settings WHERE key = 'profile'").fetchone()
+        if version < SCHEMA_VERSION or stored is None or stored["value"] != profile_id:
             refresh_ai_topics(conn)
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('profile', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (profile_id,),
+            )
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 def _topics_value(title: str | None, description: str | None) -> str:
-    """Thèmes IA stockés en base, séparés par « | » ('' = offre hors IA)."""
-    return "|".join(ai_filter.detect_topics(title, description))
+    """Thèmes du domaine (IA, FLE… selon le profil) séparés par « | » ('' = hors domaine)."""
+    return "|".join(profiles.current().detect_topics(title, description))
 
 
 def refresh_ai_topics(conn: sqlite3.Connection) -> None:
@@ -333,7 +342,7 @@ def stats(conn: sqlite3.Connection, *, ai_only: bool = False, weeks: int = 12) -
 
     applied_total = sum(by_status[s] for s in ("sent", "answered", "refused", "interview"))
     replies = sum(by_status[s] for s in ("answered", "refused", "interview"))
-    topic_order = [t for t, _ in ai_filter.TOPICS]
+    topic_order = list(profiles.current().topics)
     return {
         "total": len(rows),
         "active": sum(1 for r in rows if not r["is_archived"]),
@@ -345,7 +354,7 @@ def stats(conn: sqlite3.Connection, *, ai_only: bool = False, weeks: int = 12) -
         "by_source": dict(sorted(by_source.items(), key=lambda kv: -kv[1])),
         "topics": [
             {"topic": t, "count": topics[t]}
-            for t in sorted(topics, key=lambda t: (-topics[t], topic_order.index(t)))
+            for t in sorted(topics, key=lambda t: (-topics[t], topic_order.index(t) if t in topic_order else 99, t))
         ],
         "weekly": [{"week": w, "found": found[w], "applied": applied[w]} for w in week_keys],
         "companies": sorted(companies.values(), key=lambda c: (-c["offers"], c["name"]))[:8],
@@ -480,7 +489,8 @@ def record_sent_email(
 
 
 def load_settings(conn: sqlite3.Connection) -> dict[str, Any]:
-    settings = json.loads(json.dumps(config.DEFAULT_SETTINGS))  # copie profonde
+    defaults = {**config.DEFAULT_SETTINGS, **profiles.current().default_settings}
+    settings = json.loads(json.dumps(defaults))  # copie profonde
     for row in conn.execute("SELECT key, value FROM settings"):
         if row["key"] in settings:
             try:

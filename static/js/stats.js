@@ -2,6 +2,7 @@
 
 import { api } from "./api.js";
 import { el, STATUSES, SOURCE_SHORT } from "./util.js";
+import { PROFILE } from "./profile.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const $ = (id) => document.getElementById(id);
@@ -230,7 +231,8 @@ export async function renderStats(sourceLabel) {
     box.replaceChildren(el("p", { class: "error-text", text: error.message }));
     return;
   }
-  const scope = stats.ai_only ? "Stages en IA uniquement" : "Toutes les offres";
+  const domain = PROFILE.domain_label.charAt(0).toUpperCase() + PROFILE.domain_label.slice(1);
+  const scope = [stats.ai_only ? `${domain} uniquement` : "Toutes les offres", PROFILE.region_label].filter(Boolean).join(" · ");
   const statusRows = STATUSES.map((s) => ({
     label: s.label, value: stats.by_status[s.id] || 0, key: `st-${s.id}`, dot: true, href: `#status/${s.id}`,
   }));
@@ -268,7 +270,7 @@ export async function renderStats(sourceLabel) {
       card("Activité des 12 dernières semaines", "Offres ajoutées et premières candidatures, par semaine", weeklyChart(stats.weekly)),
       card("Parcours des candidatures", "De l'offre repérée à l'entretien", funnel(stats)),
       card("Statut des offres", "Cliquez sur un statut pour voir les offres", hbars(statusRows)),
-      card("Thèmes IA", "Une offre peut couvrir plusieurs thèmes", hbars(topicRows, { emptyText: "Aucune offre en IA pour l'instant." })),
+      card(`Thèmes ${PROFILE.domain_short}`, "Une offre peut couvrir plusieurs thèmes", hbars(topicRows, { emptyText: `Aucune offre (${PROFILE.domain_label}) pour l'instant.` })),
       card("Sources", null, hbars(sourceRows)),
       card("Entreprises les plus présentes", null, companies),
     ]),

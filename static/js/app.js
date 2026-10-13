@@ -11,6 +11,7 @@ import {
   initDialogs, openFindDialog, openSettings, openAddDialog, getSettings, loadSettings, refreshAutomation,
 } from "./dialogs.js";
 import { renderStats } from "./stats.js";
+import { PROFILE, setProfile, plural } from "./profile.js";
 
 const $ = (id) => document.getElementById(id);
 const FOLDERS = ["inbox", "starred", "all", "archived", "unread"];
@@ -65,7 +66,7 @@ function markActiveNav() {
     if (active) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
-  document.title = `${viewTitle()} · Stages`;
+  document.title = `${viewTitle()} · ${PROFILE.brand}`;
 }
 
 function renderNav() {
@@ -192,7 +193,7 @@ function renderRow(offer) {
   }
   if (offer.has_draft) chips.push(el("span", { class: "chip draft-chip", text: "Brouillon", title: "Un brouillon d'email est enregistré" }));
   for (const topic of (offer.ai_topics || []).slice(0, 2)) {
-    chips.push(el("span", { class: "chip topic-chip", text: topic, title: "Thème IA détecté dans l'offre" }));
+    chips.push(el("span", { class: "chip topic-chip", text: topic, title: `Thème ${PROFILE.domain_short} détecté dans l'offre` }));
   }
   if (offer.emails_count > 1) chips.push(el("span", { class: "chip count-chip", text: `${offer.emails_count} emails`, title: "Emails envoyés pour cette offre" }));
 
@@ -239,14 +240,14 @@ function renderList() {
   }
   const hidden = state.counts?.hidden_non_ai || 0;
   const hiddenNote = hidden
-    ? el("p", { class: "muted", text: `${hidden} offre${hidden > 1 ? "s" : ""} hors IA ${hidden > 1 ? "sont masquées" : "est masquée"} (filtre « stages en IA uniquement » dans Paramètres > Automatisation).` })
+    ? el("p", { class: "muted", text: `${plural(hidden, "offre")} hors ${PROFILE.domain_short} ${hidden > 1 ? "sont masquées" : "est masquée"} (filtre « ${PROFILE.domain_label} uniquement » dans Paramètres > Automatisation).` })
     : null;
   if (state.q) {
     showEmpty([el("p", { text: `Aucune offre ne correspond à « ${state.q} » dans ce dossier.` }), hiddenNote]);
   } else if (state.counts && state.counts.total === 0) {
     showEmpty([
       el("p", { class: "empty-title", text: "Aucune offre pour l'instant" }),
-      el("p", { class: "muted", text: "Lancez une recherche de stages en intelligence artificielle sur HelloWork, LinkedIn et Welcome to the Jungle, ou activez la recherche automatique. Pensez aussi à remplir votre profil dans les paramètres pour que l'IA rédige vos emails." }),
+      el("p", { class: "muted", text: `Lancez une recherche de ${PROFILE.domain_label}${PROFILE.region_label ? ` (${PROFILE.region_label})` : ""} sur HelloWork, LinkedIn et Welcome to the Jungle, ou activez la recherche automatique. Pensez aussi à remplir votre profil dans les paramètres pour que l'IA rédige vos emails.` }),
       hiddenNote,
       el("div", { class: "empty-actions" }, [
         el("button", { type: "button", class: "btn primary", text: "Chercher des offres", onclick: () => openFindDialog() }),
@@ -602,17 +603,20 @@ export async function runSearch(params) {
   $("refresh-btn").classList.add("spinning");
   $("refresh-btn").disabled = true;
   const names = params.sources.map((s) => SOURCE_SHORT[s] || s).join(", ");
-  const what = [params.keywords ? `« ${params.keywords} »` : "stages en IA", params.location].filter(Boolean).join(" · ");
+  const what = [params.keywords ? `« ${params.keywords} »` : PROFILE.domain_label, params.location || PROFILE.region_label].filter(Boolean).join(" · ");
   showBanner("loading", `Recherche en cours sur ${names}…`, what ? [{ text: what }] : []);
   try {
     const result = await api("/api/fetch", { method: "POST", json: params });
     await loadSettings();
-    const kept = (r) => (result.ai_only ? `, dont ${r.kept} en IA` : "");
+    const kept = (r) => (result.ai_only || r.off_region ? `, dont ${r.kept} retenue${r.kept > 1 ? "s" : ""}` : "");
     const lines = result.results.map((r) => (r.error
       ? { text: `${r.label} : ${r.error}${r.found ? ` (${r.found} offres récupérées avant l'erreur${kept(r)}, ${r.new} nouvelles)` : ""}`, error: true }
       : { text: `${r.label} : ${r.found} offre${r.found > 1 ? "s" : ""} trouvée${r.found > 1 ? "s" : ""}${kept(r)}, ${r.new} nouvelle${r.new > 1 ? "s" : ""}` }));
     if (result.filtered_total) {
-      lines.push({ text: `${result.filtered_total} offre${result.filtered_total > 1 ? "s" : ""} hors IA écartée${result.filtered_total > 1 ? "s" : ""}.` });
+      lines.push({ text: `${plural(result.filtered_total, "offre")} hors ${PROFILE.domain_short} écartée${result.filtered_total > 1 ? "s" : ""}.` });
+    }
+    if (result.off_region_total) {
+      lines.push({ text: `${plural(result.off_region_total, "offre")} hors zone (${PROFILE.region_label}) écartée${result.off_region_total > 1 ? "s" : ""}.` });
     }
     if (result.details) lines.push({ text: `Description lue pour ${result.details} nouvelle${result.details > 1 ? "s" : ""} offre${result.details > 1 ? "s" : ""}.` });
     const failed = result.results.some((r) => r.error);
@@ -653,7 +657,7 @@ async function pollAutomation() {
     const drafts = summary.drafted ? ` · ${summary.drafted} brouillon${summary.drafted > 1 ? "s" : ""} préparé${summary.drafted > 1 ? "s" : ""}` : "";
     if (n || summary.errors?.length) {
       toast(n
-        ? `Recherche automatique : ${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} en IA${drafts}`
+        ? `Recherche automatique : ${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} (${PROFILE.domain_label})${drafts}`
         : `Recherche automatique : ${summary.errors.join(" ; ")}`, { error: !n, timeout: 10000 });
     }
     await refreshAll();
@@ -677,6 +681,7 @@ async function init() {
   try {
     const [meta] = await Promise.all([api("/api/meta"), loadSettings()]);
     state.meta = meta;
+    setProfile(meta.profile);
   } catch (error) {
     showEmpty([el("p", { class: "error-text", text: error.message })]);
     return;

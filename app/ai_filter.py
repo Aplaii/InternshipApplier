@@ -62,7 +62,8 @@ _STRICT_IA = re.compile(r"intelligence artificielle|artificial intelligence|\b(i
 _LIGATURES = str.maketrans({"œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE", "’": "'"})
 
 
-def _fold(text: str | None) -> str:
+def fold(text: str | None) -> str:
+    """Minuscules sans accents ni ligatures, espaces normalisés (sert aussi aux autres profils)."""
     if not text:
         return ""
     decomposed = unicodedata.normalize("NFKD", text.translate(_LIGATURES))
@@ -87,8 +88,8 @@ def detect_topics(title: str | None, description: str | None = None) -> list[str
     Le titre fait foi ; la description n'ajoute des thèmes que si elle en parle au moins
     deux fois, pour ne pas retenir une offre de comptabilité qui cite « l'IA » en passant.
     """
-    topics = _topics_in(_fold(title), strict=False)
-    body = _fold(description)
+    topics = _topics_in(fold(title), strict=False)
+    body = fold(description)
     if body:
         for topic in _topics_in(body, strict=True):
             regex = dict(_COMPILED)[topic]

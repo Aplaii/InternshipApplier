@@ -143,7 +143,7 @@ def test_fetch_keeps_only_ai_offers(client, monkeypatch):
     result = client.post("/api/fetch", json=payload).json()
     # Sans mot-clé, plusieurs requêtes couvrent le domaine de l'IA (et les doublons sont fusionnés).
     assert [kw for _, kw in seen] == list(ai_filter.DEFAULT_QUERIES)
-    assert result["results"][0] == {"source": "hellowork", "label": "HelloWork", "found": 2, "kept": 1, "new": 1, "error": None}
+    assert result["results"][0] == {"source": "hellowork", "label": "HelloWork", "found": 2, "kept": 1, "off_region": 0, "new": 1, "error": None}
     assert result["filtered_total"] == 1 and result["ai_only"] is True
     assert [o["title"] for o in client.get("/api/offers").json()["items"]] == ["Stage IA"]
 

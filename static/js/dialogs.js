@@ -2,6 +2,7 @@
 
 import { api } from "./api.js";
 import { el, icon, toast, confirmDialog, formatSize, hydrateIcons } from "./util.js";
+import { PROFILE } from "./profile.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -307,7 +308,8 @@ function relativeTime(iso) {
 function summaryText(summary) {
   if (!summary) return "";
   const parts = [`${summary.new_total} nouvelle${summary.new_total > 1 ? "s" : ""} offre${summary.new_total > 1 ? "s" : ""}`];
-  if (summary.filtered_total) parts.push(`${summary.filtered_total} hors IA écartée${summary.filtered_total > 1 ? "s" : ""}`);
+  if (summary.filtered_total) parts.push(`${summary.filtered_total} hors ${PROFILE.domain_short} écartée${summary.filtered_total > 1 ? "s" : ""}`);
+  if (summary.off_region_total) parts.push(`${summary.off_region_total} hors zone écartée${summary.off_region_total > 1 ? "s" : ""}`);
   if (summary.details) parts.push(`${summary.details} description${summary.details > 1 ? "s" : ""} lue${summary.details > 1 ? "s" : ""}`);
   if (summary.drafted) parts.push(`${summary.drafted} brouillon${summary.drafted > 1 ? "s" : ""} préparé${summary.drafted > 1 ? "s" : ""}`);
   return parts.join(" · ");
@@ -365,7 +367,7 @@ async function runAutomationNow() {
     }
   }
   const n = status.last_summary?.new_total || 0;
-  toast(n ? `${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} en IA.` : "Recherche terminée : aucune nouvelle offre.", { timeout: 6000 });
+  toast(n ? `${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} (${PROFILE.domain_label}).` : "Recherche terminée : aucune nouvelle offre.", { timeout: 6000 });
   await ctx.onChange();
 }
 

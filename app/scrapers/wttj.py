@@ -43,7 +43,12 @@ def source_id_from_url(url: str) -> str | None:
 
 
 def build_query(params: SearchParams, now_ts: float | None = None) -> dict[str, Any]:
-    filters = ["contract_type:internship", "offices.country_code:FR"]
+    countries = [c.upper() for c in params.countries if re.fullmatch(r"[A-Za-z]{2}", c)] or ["FR"]
+    filters = ["contract_type:internship"]
+    if len(countries) == 1:
+        filters.append(f"offices.country_code:{countries[0]}")
+    else:
+        filters.append("(" + " OR ".join(f"offices.country_code:{c}" for c in countries) + ")")
     seconds = RECENCY_SECONDS.get(params.recency)
     if seconds:
         filters.append(f"published_at_timestamp > {int((now_ts or time.time()) - seconds)}")

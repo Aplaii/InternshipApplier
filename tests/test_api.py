@@ -187,7 +187,7 @@ def test_fetch_saves_offers_and_reports_errors(client, monkeypatch):
                "recency": "week", "max_per_source": 20}
     result = client.post("/api/fetch", json=payload).json()
     by_source = {r["source"]: r for r in result["results"]}
-    assert by_source["hellowork"] == {"source": "hellowork", "label": "HelloWork", "found": 2, "kept": 2, "new": 2, "error": None}
+    assert by_source["hellowork"] == {"source": "hellowork", "label": "HelloWork", "found": 2, "kept": 2, "off_region": 0, "new": 2, "error": None}
     assert by_source["linkedin"]["new"] == 1 and "429" in by_source["linkedin"]["error"]
     assert by_source["wttj"]["found"] == 0 and "ValueError" in by_source["wttj"]["error"]
     assert result["new_total"] == 3

@@ -45,6 +45,7 @@ class SearchParams:
     location: str = ""
     recency: str = "week"  # day | 3days | week | month | all
     max_results: int = 60
+    countries: tuple[str, ...] = ("FR",)  # pays des bureaux (Welcome to the Jungle)
 
 
 @dataclass

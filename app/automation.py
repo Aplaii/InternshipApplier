@@ -1,9 +1,10 @@
 """Recherche d'offres et automatisation.
 
 - ``Automation.search`` : interroge les sites (plusieurs requêtes par site si besoin),
-  écarte les offres hors IA quand le filtre est actif, enregistre les nouvelles offres ;
+  écarte les offres hors du domaine du profil (IA, FLE…) quand le filtre est actif et
+  celles situées hors de la zone du profil, enregistre les nouvelles offres ;
 - ``Automation.process_new`` : pour les nouvelles offres, lit la description en ligne
-  (adresse du recruteur, thèmes IA plus précis) puis, si demandé, prépare un brouillon
+  (adresse du recruteur, thèmes plus précis) puis, si demandé, prépare un brouillon
   d'email avec le modèle local ;
 - ``Automation.scheduler`` : tâche de fond qui relance la recherche enregistrée à
   intervalle régulier (« Recherche automatique » dans les paramètres).
@@ -22,7 +23,7 @@ from typing import Any
 import httpx
 from starlette.concurrency import run_in_threadpool
 
-from . import ai_filter, assistant, config, db, llm
+from . import assistant, config, db, llm, profiles
 from .scrapers import SEARCHERS, ScrapedOffer, SearchParams, SourceError, fetch_details, make_client
 
 log = logging.getLogger("internship_applier")
@@ -40,6 +41,7 @@ class SourceOutcome:
     source: str
     offers: list[ScrapedOffer] = field(default_factory=list)
     found: int = 0
+    off_region: int = 0
     error: str | None = None
 
 
@@ -48,7 +50,26 @@ def queries_for(keywords: str, ai_only: bool) -> list[str]:
     keywords = keywords.strip()
     if keywords:
         return [keywords]
-    return list(ai_filter.DEFAULT_QUERIES) if ai_only else [""]
+    return list(profiles.current().default_queries) if ai_only else [""]
+
+
+def plan_searches(source: str, params: SearchParams, queries: list[str]) -> list[SearchParams]:
+    """Recherches à lancer sur ``source`` : une par requête et par lieu.
+
+    Sans lieu saisi, le profil peut imposer plusieurs lieux (ex. Belgique, Suisse, Canada…
+    sur LinkedIn) ; le nombre d'offres demandé est alors réparti entre eux.
+    """
+    profile = profiles.current()
+    locations = [params.location]
+    if not params.location.strip() and profile.search_locations.get(source):
+        locations = list(profile.search_locations[source])
+    per_search = params.max_results if len(locations) == 1 else max(10, params.max_results // len(locations))
+    return [
+        replace(params, keywords=query, location=location, max_results=per_search,
+                countries=profile.wttj_countries)
+        for query in queries
+        for location in locations
+    ]
 
 
 def _parse_iso(value: Any) -> datetime | None:
@@ -84,9 +105,9 @@ class Automation:
     ) -> SourceOutcome:
         outcome = SourceOutcome(source)
         merged: dict[str, ScrapedOffer] = {}
-        for query in queries:
+        for search in plan_searches(source, params, queries):
             try:
-                offers = await SEARCHERS[source](client, replace(params, keywords=query))
+                offers = await SEARCHERS[source](client, search)
             except SourceError as exc:
                 offers, outcome.error = exc.partial, exc.message
             except Exception as exc:  # bug d'analyse, site modifié…
@@ -97,10 +118,11 @@ class Automation:
                 merged.setdefault(offer.source_id, offer)
             if outcome.error:
                 break
+        profile = profiles.current()
         outcome.found = len(merged)
-        outcome.offers = [
-            o for o in merged.values() if not ai_only or ai_filter.is_ai_offer(o.title)
-        ]
+        in_region = [o for o in merged.values() if profile.region_ok(o.location)]
+        outcome.off_region = len(merged) - len(in_region)
+        outcome.offers = [o for o in in_region if not ai_only or profile.detect_topics(o.title, None)]
         return outcome
 
     async def search(
@@ -132,6 +154,7 @@ class Automation:
                         "label": config.SOURCE_LABELS[outcome.source],
                         "found": outcome.found,
                         "kept": len(outcome.offers),
+                        "off_region": outcome.off_region,
                         "new": new,
                         "error": outcome.error,
                     })
@@ -141,7 +164,8 @@ class Automation:
         return {
             "results": results,
             "new_total": sum(r["new"] for r in results),
-            "filtered_total": sum(r["found"] - r["kept"] for r in results),
+            "filtered_total": sum(r["found"] - r["off_region"] - r["kept"] for r in results),
+            "off_region_total": sum(r["off_region"] for r in results),
             "ai_only": ai_only,
             "queries": queries,
             "new_ids": new_ids,
@@ -287,13 +311,14 @@ class Automation:
                 "ok": not any(r["error"] for r in result["results"]),
                 "new_total": result["new_total"],
                 "filtered_total": result["filtered_total"],
+                "off_region_total": result["off_region_total"],
                 "errors": [f"{r['label']} : {r['error']}" for r in result["results"] if r["error"]],
                 **processed,
             }
         except Exception as exc:  # la tâche de fond ne doit jamais s'arrêter
             log.exception("Recherche automatique en échec")
             summary = {
-                "at": started, "trigger": trigger, "ok": False, "new_total": 0, "filtered_total": 0,
+                "at": started, "trigger": trigger, "ok": False, "new_total": 0, "filtered_total": 0, "off_region_total": 0,
                 "errors": [f"Erreur inattendue ({type(exc).__name__})"], "details": 0, "drafted": 0,
                 "draft_error": None,
             }

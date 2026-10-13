@@ -21,7 +21,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from . import __version__, assistant, config, db, documents, llm, mailer, prompts
+from . import __version__, assistant, config, db, documents, llm, mailer, profiles, prompts
 from .automation import Automation
 from .scrapers import (
     ScrapedOffer, SearchParams, SourceError, fetch_details, identify_url, make_client,
@@ -193,6 +193,11 @@ def _public_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _favicon_path():
+    custom = profiles.current().favicon
+    return custom if custom else config.STATIC_DIR / "favicon.svg"
+
+
 def _ai_only() -> bool:
     return bool(_load_settings().get("ai_only"))
 
@@ -278,6 +283,7 @@ def create_app() -> FastAPI:
             "statuses": list(config.STATUSES),
             "sources": config.SOURCE_LABELS,
             "search_sources": list(config.SEARCH_SOURCES),
+            "profile": profiles.current().public(),
         }
 
     @app.get("/api/offers")
@@ -600,7 +606,11 @@ def create_app() -> FastAPI:
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> Response:
-        return FileResponse(config.STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
+        return FileResponse(_favicon_path(), media_type="image/svg+xml")
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    def favicon_svg() -> Response:
+        return FileResponse(_favicon_path(), media_type="image/svg+xml")
 
     app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
     return app

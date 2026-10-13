@@ -55,6 +55,15 @@ La recherche tourne tant que l'application est ouverte ; l'indicateur sous le me
 prochaine échéance, et une notification signale les nouvelles offres. Le bouton
 « Enregistrer et lancer maintenant » déclenche un passage immédiat.
 
+## Deuxième modèle : stages FLE / DIFLES (Europe et Canada)
+
+Le dossier [`fle/`](fle/README.md) contient un second modèle qui recense les stages en
+français langue étrangère et seconde (FLE, FLS, FOS, didactique des langues…) en Europe ou au
+Canada. Il se lance avec `fle/run.sh --open` (port 8001) et garde ses données dans `fle/data/`.
+
+Les modèles sont des *profils* (`app/profiles.py`) : domaine de stage, requêtes, zone
+géographique et textes de l'interface. Le profil se choisit avec la variable `IA_PROFILE`.
+
 ## Développement
 
 ```bash
