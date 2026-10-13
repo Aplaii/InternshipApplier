@@ -402,6 +402,49 @@ def create_app() -> FastAPI:
             created = db.get_offer(conn, offer_id)
         return _with_label(created)
 
+    # ------------------------------------------------------------------- établissements
+
+    def _institution_offer(item: dict[str, str]) -> tuple[ScrapedOffer, str]:
+        source, source_id, url = identify_url(item["url"])
+        profile = profiles.current()
+        offer = ScrapedOffer(
+            source=source, source_id=source_id, url=url,
+            title=f"Candidature spontanée – {profile.domain_label}",
+            company=f"{item['name']} – {item['unit']}",
+            location=f"{item['city']}, {item['country']}",
+            contract="Candidature spontanée",
+        )
+        description = (
+            f"Candidature spontanée pour un stage ({profile.domain_label}) auprès de : {item['unit']}, "
+            f"{item['name']} ({item['city']}, {item['country']}). Type d'établissement : {item['kind']}. "
+            "On y apprend le français comme langue étrangère ou seconde, sans suivre le cursus français."
+        )
+        return offer, description
+
+    @app.get("/api/institutions")
+    def list_institutions() -> list[dict[str, Any]]:
+        items = profiles.current().institutions
+        with db.get_conn() as conn:
+            result = []
+            for item in items:
+                source, source_id, _ = identify_url(item["url"])
+                result.append({**item, "offer_id": db.find_offer_id(conn, source, source_id)})
+        return result
+
+    @app.post("/api/institutions/{institution_id}/track")
+    def track_institution(institution_id: str) -> dict[str, Any]:
+        """Ajoute l'établissement aux offres (candidature spontanée), une seule fois."""
+        item = next((i for i in profiles.current().institutions if i["id"] == institution_id), None)
+        if item is None:
+            raise HTTPException(404, "Établissement introuvable.")
+        offer, description = _institution_offer(item)
+        with db.get_conn() as conn:
+            offer_id = db.find_offer_id(conn, offer.source, offer.source_id)
+            if offer_id is None:
+                offer_id = db.insert_manual_offer(conn, offer, description)
+            created = db.get_offer(conn, offer_id)
+        return _with_label(created)
+
     @app.post("/api/offers/{offer_id}/details")
     async def offer_details(offer_id: int, refresh: bool = False) -> dict[str, Any]:
         try:

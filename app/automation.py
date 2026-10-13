@@ -122,7 +122,10 @@ class Automation:
         outcome.found = len(merged)
         in_region = [o for o in merged.values() if profile.region_ok(o.location)]
         outcome.off_region = len(merged) - len(in_region)
-        outcome.offers = [o for o in in_region if not ai_only or profile.detect_topics(o.title, None)]
+        outcome.offers = [
+            o for o in in_region
+            if not profile.excluded(o.title, o.company) and (not ai_only or profile.detect_topics(o.title, None))
+        ]
         return outcome
 
     async def search(

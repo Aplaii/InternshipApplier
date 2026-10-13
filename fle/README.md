@@ -33,6 +33,26 @@ de façon répétée) parle de :
 outre-mer, Asie…) sont écartées, quel que soit le réglage du filtre de domaine. Un lieu
 imprécis (« Télétravail », ville française seule) est gardé.
 
+**Exclusions** : les offres d'établissements qui suivent le programme scolaire français
+(lycées français de l'étranger, réseau AEFE, Mission laïque, écoles françaises) sont écartées.
+
+## Onglet « Universités »
+
+L'onglet **Universités** recense 56 établissements d'Europe et du Canada où l'on apprend le
+français comme langue étrangère ou seconde **sans suivre le cursus français** :
+
+- en France, les centres universitaires de FLE pour étudiants étrangers (CLA Besançon,
+  CUEF Grenoble, CIEF Lyon 2, DEFLE Bordeaux, IEFE Montpellier, IIEF Strasbourg…) ;
+- en Europe, les centres de langues et départements de français (ELCF Genève, EFLE Lausanne,
+  ILV UCLouvain, ISLV Liège, Complutense, Humboldt, Trinity College Dublin…) ;
+- au Canada, les écoles de français langue seconde (Laval, Montréal, UQAM, McGill, ELFCQ
+  Chicoutimi, EIF Trois-Rivières, ILOB Ottawa, Glendon…).
+
+« Suivre » ajoute l'établissement à la boîte de réception comme **candidature spontanée** :
+on peut alors rédiger l'email avec l'IA et suivre la réponse comme pour une offre. La liste est
+dans `universites.json` (à compléter librement) ; vérifiez sur le site de chaque université le
+service exact et la personne à contacter.
+
 ## Où l'application cherche
 
 Sans mot-clé, elle lance les requêtes `FLE`, `français langue étrangère`,

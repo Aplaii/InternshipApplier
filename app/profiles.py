@@ -25,6 +25,10 @@ def _anywhere(_location: str) -> bool:
     return True
 
 
+def _never(_title: str | None, _company: str | None) -> bool:
+    return False
+
+
 @dataclass(frozen=True)
 class Profile:
     id: str
@@ -42,6 +46,12 @@ class Profile:
     # Zone géographique
     region_label: str = ""          # « Europe et Canada » (vide = pas de restriction)
     region_ok: Callable[[str], bool] = _anywhere
+    # Offres à écarter d'office (titre, entreprise), ex. établissements à cursus français.
+    excluded: Callable[[str | None, str | None], bool] = _never
+    # Établissements à démarcher (candidatures spontanées), affichés dans l'onglet dédié.
+    institutions: tuple[dict[str, str], ...] = ()
+    institutions_label: str = ""    # « Universités »
+    institutions_intro: str = ""
     # Lieux interrogés quand le champ « Lieu » est vide, par site (vide = lieu saisi).
     search_locations: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # Pays des bureaux pour Welcome to the Jungle (codes ISO 3166-1).
@@ -62,6 +72,8 @@ class Profile:
             "location_placeholder": self.location_placeholder,
             "region_label": self.region_label,
             "default_queries": list(self.default_queries),
+            "institutions_label": self.institutions_label if self.institutions else "",
+            "institutions_intro": self.institutions_intro,
         }
 
 

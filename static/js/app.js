@@ -12,6 +12,7 @@ import {
 } from "./dialogs.js";
 import { renderStats } from "./stats.js";
 import { PROFILE, setProfile, plural } from "./profile.js";
+import { renderInstitutions } from "./institutions.js";
 
 const $ = (id) => document.getElementById(id);
 const FOLDERS = ["inbox", "starred", "all", "archived", "unread"];
@@ -38,6 +39,7 @@ function parseHash() {
   const [kind, ...rest] = hash.split("/");
   const value = rest.join("/");
   if (kind === "stats") return { folder: "all", status: null, source: null, key: "stats", stats: true };
+  if (kind === "universites") return { folder: "all", status: null, source: null, key: "institutions", institutions: true };
   if (kind === "status" && STATUSES.some((s) => s.id === value)) {
     return { folder: "all", status: value, source: null, key: `status/${value}` };
   }
@@ -49,6 +51,7 @@ function parseHash() {
 function viewTitle() {
   const { folder, status, source } = state.view;
   if (state.view.stats) return "Tableau de bord";
+  if (state.view.institutions) return PROFILE.institutions_label || "Universités";
   if (status) return statusInfo(status).label;
   if (source) return sourceLabel(source);
   return { inbox: "Boîte de réception", starred: "Favoris", all: "Toutes les offres", archived: "Archivées", unread: "Non lues" }[folder];
@@ -103,13 +106,14 @@ function renderNav() {
 /** Affiche soit la liste des offres, soit le tableau de bord. */
 function showView() {
   const stats = Boolean(state.view.stats);
+  const institutions = Boolean(state.view.institutions);
   $("stats-view").hidden = !stats;
-  for (const id of ["list-toolbar", "offer-list"]) $(id).hidden = stats;
-  if (stats) {
-    $("empty-state").hidden = true;
-    renderStats(sourceLabel);
-  }
-  return !stats;
+  $("institutions-view").hidden = !institutions;
+  for (const id of ["list-toolbar", "offer-list"]) $(id).hidden = stats || institutions;
+  if (stats || institutions) $("empty-state").hidden = true;
+  if (stats) renderStats(sourceLabel);
+  if (institutions) renderInstitutions({ onOpen: openDrawer, onChange: loadCounts });
+  return !stats && !institutions;
 }
 
 async function loadOffers() {
@@ -682,6 +686,7 @@ async function init() {
     const [meta] = await Promise.all([api("/api/meta"), loadSettings()]);
     state.meta = meta;
     setProfile(meta.profile);
+    $("nav-institutions").hidden = !meta.profile?.institutions_label;
   } catch (error) {
     showEmpty([el("p", { class: "error-text", text: error.message })]);
     return;

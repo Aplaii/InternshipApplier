@@ -7,8 +7,8 @@ import pytest
 from app import automation, db, profiles
 from app.scrapers import SEARCHERS, ScrapedOffer, SearchParams, wttj
 from fle import PROFILE as FLE
-from fle.regions import region_of, region_ok
-from fle.topics import detect_topics
+from fle.regions import WTTJ_COUNTRIES, region_of, region_ok
+from fle.topics import detect_topics, follows_french_curriculum
 
 
 @pytest.fixture
@@ -153,3 +153,64 @@ def test_unknown_profile_module():
     with pytest.raises(ModuleNotFoundError):
         profiles.load("profil_inexistant")
     assert profiles.load("") is profiles.AI_PROFILE and profiles.load("fle") is FLE
+
+
+# --------------------------------------------------------------------------- universités
+
+
+def test_institutions_list_is_clean():
+    assert len(FLE.institutions) >= 50
+    ids = [i["id"] for i in FLE.institutions]
+    assert len(ids) == len(set(ids))
+    for item in FLE.institutions:
+        assert set(item) >= {"id", "name", "unit", "city", "country", "country_code", "region", "kind", "url"}
+        assert item["url"].startswith("https://")
+        # Europe ou Canada uniquement, et jamais un établissement à cursus français.
+        assert item["region"] == ("canada" if item["country_code"] == "CA" else "europe")
+        assert item["country_code"] in WTTJ_COUNTRIES
+        assert not follows_french_curriculum(item["name"], item["unit"])
+
+
+@pytest.mark.parametrize("title, company, excluded", [
+    ("Stage FLE", "Lycée français de Madrid", True),
+    ("Stage assistant de français", "AEFE", True),
+    ("Stage professeur de français", "Lycée Français International de Bruxelles", True),
+    ("Stage FLE", "Mission laïque française", True),
+    ("Stage FLE", "Alliance française de Toronto", False),
+    ("Stage FLE", "CUEF – Université Grenoble Alpes", False),
+    ("Stage FLS en UPE2A", "CASNAV de l'académie de Lyon", False),
+])
+def test_french_curriculum_schools_are_excluded(title, company, excluded):
+    assert FLE.excluded(title, company) is excluded
+
+
+def test_fetch_drops_french_curriculum_schools(client, monkeypatch, fle_profile):
+    async def wttj_search(_client, params):
+        return [offer("1", "Stage FLE", "Madrid, Spain", source="wttj"),
+                ScrapedOffer(source="wttj", source_id="2", url="https://example.org/2", title="Stage FLE",
+                             company="Lycée français de Madrid", location="Madrid, Spain")]
+
+    monkeypatch.setitem(SEARCHERS, "wttj", wttj_search)
+    result = client.post("/api/fetch", json={"sources": ["wttj"], "keywords": "FLE"}).json()
+    assert result["new_total"] == 1 and result["filtered_total"] == 1
+
+
+def test_track_institution(client, fle_profile):
+    items = client.get("/api/institutions").json()
+    assert len(items) == len(FLE.institutions) and all(i["offer_id"] is None for i in items)
+    target = next(i for i in items if i["country_code"] == "CA")
+    first = client.post(f"/api/institutions/{target['id']}/track").json()
+    assert first["source"] == "manual" and first["contract"] == "Candidature spontanée"
+    assert target["name"] in first["company"] and first["location"].endswith("Canada")
+    assert "FLE" in first["ai_topics"] and "sans suivre le cursus français" in first["description"]
+    # Une seule fois ; l'offre reste visible malgré le filtre du domaine.
+    assert client.post(f"/api/institutions/{target['id']}/track").json()["id"] == first["id"]
+    assert next(i for i in client.get("/api/institutions").json() if i["id"] == target["id"])["offer_id"] == first["id"]
+    assert client.get("/api/offers").json()["total"] == 1
+    assert client.post("/api/institutions/inconnue/track").status_code == 404
+    assert client.get("/api/meta").json()["profile"]["institutions_label"] == "Universités"
+
+
+def test_ai_profile_has_no_institutions(client):
+    assert client.get("/api/institutions").json() == []
+    assert client.get("/api/meta").json()["profile"]["institutions_label"] == ""

@@ -82,5 +82,25 @@ def detect_topics(title: str | None, description: str | None = None) -> list[str
     return [topic for topic in TOPIC_ORDER if topic in found]
 
 
+# Établissements qui suivent le programme scolaire français (lycées français de l'étranger,
+# réseau AEFE, Mission laïque…) : hors du périmètre FLE recherché.
+_FRENCH_CURRICULUM = re.compile("|".join((
+    r"\blycees? (international |francais international )?francais\b", r"\blycee francais\b",
+    r"\bpetit lycee\b", r"\baefe\b", r"\bmission laique\b", r"\bmlf\b", r"\bosui\b",
+    r"\becoles? (internationales? )?francaises?\b", r"\bcolleges? francais\b",
+    r"\bfrench (international )?(lycee|school)\b", r"\blycee international\b",
+    r"\bcursus (scolaire )?francais\b", r"\bprogrammes? (scolaires? )?francais\b",
+)))
+
+
+def follows_french_curriculum(*texts: str | None) -> bool:
+    """Vrai si l'un des textes (titre, entreprise…) désigne un établissement à cursus français."""
+    return any(_FRENCH_CURRICULUM.search(fold(text)) for text in texts if text)
+
+
+def excluded_offer(title: str | None, company: str | None) -> bool:
+    return follows_french_curriculum(title, company)
+
+
 def is_fle_offer(title: str | None, description: str | None = None) -> bool:
     return bool(detect_topics(title, description))

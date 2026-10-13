@@ -618,3 +618,22 @@ body.sidebar-collapsed .auto-indicator { justify-content: center; padding: 0; }
   .drawer { right: 8px; top: 64px; bottom: 8px; }
   .page-info { display: none; }
 }
+
+/* ------------------------------------------------------------------ universités (profil FLE) */
+
+.inst-intro { max-width: 860px; margin: 0 0 14px; }
+.inst-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 12px; }
+.inst-zones { display: flex; flex-wrap: wrap; gap: 6px; }
+.inst-search { flex: 1 1 220px; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); }
+.inst-search:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-color: transparent; }
+.inst-check { margin-top: 0; font-size: 13px; }
+.inst-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.inst { display: flex; align-items: flex-start; gap: 10px; padding: 12px 12px 12px 16px; border: 1px solid var(--divider); border-radius: 14px; background: var(--surface); }
+.inst.tracked { border-color: color-mix(in srgb, var(--st-interview) 45%, var(--divider)); }
+.inst-main { flex: 1; min-width: 0; }
+.inst-name { font-weight: 600; }
+.inst-unit { margin-top: 2px; color: var(--text-2); font-size: 13px; }
+.inst-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 12.5px; }
+.inst-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.inst-empty { padding: 16px 0; }
+@media (max-width: 900px) { .inst-list { grid-template-columns: minmax(0, 1fr); } }
