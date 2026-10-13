@@ -7,4 +7,4 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export IA_PROFILE=fle
 export IA_DATA_DIR="${IA_DATA_DIR:-$HERE/data}"
 export IA_PORT="${IA_PORT:-8001}"
-exec "$HERE/../run.sh" "$@"
+exec bash "$HERE/../run.sh" "$@"
