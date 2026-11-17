@@ -34,7 +34,7 @@ DETAILS_DELAY = 1.0
 DETAILS_MAX = 40
 # Pause entre deux recherches LinkedIn (une par lieu et par requête) : LinkedIn limite
 # vite les requêtes sans compte (HTTP 429).
-LINKEDIN_QUERY_DELAY = 2.0
+LINKEDIN_QUERY_DELAY = 1.5
 # Fréquence à laquelle la tâche de fond vérifie s'il faut relancer la recherche.
 CHECK_EVERY = 60.0
 
@@ -47,12 +47,16 @@ class SourceOutcome:
     error: str | None = None
 
 
-def queries_for(keywords: str, fle_only: bool) -> list[str]:
-    """Requêtes à lancer sur chaque site."""
+def queries_for(keywords: str, fle_only: bool, source: str | None = None) -> list[str]:
+    """Requêtes à lancer sur un site (pour chaque lieu)."""
     keywords = keywords.strip()
     if keywords:
         return [keywords]
-    return list(fle_filter.DEFAULT_QUERIES) if fle_only else [""]
+    if not fle_only:
+        return [""]
+    if source == "linkedin":
+        return [fle_filter.LINKEDIN_QUERY]
+    return list(fle_filter.DEFAULT_QUERIES)
 
 
 def _parse_iso(value: Any) -> datetime | None:
@@ -84,16 +88,23 @@ class Automation:
     # ------------------------------------------------------------------ recherche
 
     async def _search_source(
-        self, client: httpx.AsyncClient, source: str, params: SearchParams, queries: list[str], fle_only: bool
+        self, client: httpx.AsyncClient, source: str, params: SearchParams, fle_only: bool
     ) -> SourceOutcome:
         outcome = SourceOutcome(source)
         merged: dict[str, ScrapedOffer] = {}
-        combos = [(loc, q) for loc in fle_filter.split_locations(params.location) for q in queries]
+        locations = fle_filter.split_locations(params.location)
+        queries = queries_for(params.keywords, fle_only, source)
+        combos = [(loc, q) for loc in locations for q in queries]
+        # « Offres max. par site » est réparti entre les recherches : sinon chaque lieu
+        # parcourrait jusqu'à 6 pages et une recherche sur 9 pays durerait des minutes.
+        per_search = max(10, -(-params.max_results // len(combos)))
         for index, (location, query) in enumerate(combos):
             if index and source == "linkedin":
                 await asyncio.sleep(LINKEDIN_QUERY_DELAY)
             try:
-                offers = await SEARCHERS[source](client, replace(params, keywords=query, location=location))
+                offers = await SEARCHERS[source](
+                    client, replace(params, keywords=query, location=location, max_results=per_search)
+                )
             except SourceError as exc:
                 offers, outcome.error = exc.partial, exc.message
             except Exception as exc:  # bug d'analyse, site modifié…
@@ -119,7 +130,7 @@ class Automation:
         try:
             async with make_client() as client:
                 outcomes = await asyncio.gather(
-                    *(self._search_source(client, s, params, queries, fle_only) for s in sources)
+                    *(self._search_source(client, s, params, fle_only) for s in sources)
                 )
         finally:
             self.running = None

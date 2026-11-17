@@ -63,6 +63,9 @@ def test_queries_for():
     assert automation.queries_for(" Alliance française ", fle_only=True) == ["Alliance française"]
     assert automation.queries_for("", fle_only=True) == list(fle_filter.DEFAULT_QUERIES)
     assert automation.queries_for("", fle_only=False) == [""]
+    # LinkedIn : une seule requête « OR », sans « FLE » seul (qui ramène « Fleet manager »).
+    [query] = automation.queries_for("", fle_only=True, source="linkedin")
+    assert " OR " in query and '"French teacher"' in query and not query.startswith("FLE")
 
 
 def test_split_locations():

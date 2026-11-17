@@ -61,7 +61,7 @@ def test_search_runs_once_per_location_and_query(client, monkeypatch, no_sleep):
     seen = []
 
     async def search(_client, params):
-        seen.append((params.location, params.keywords))
+        seen.append((params.location, params.keywords, params.max_results))
         return [ScrapedOffer(source="linkedin", source_id=f"{params.location}-{params.keywords}",
                              url="https://www.linkedin.com/jobs/view/1/", title="French Teacher Intern")]
 
@@ -69,7 +69,14 @@ def test_search_runs_once_per_location_and_query(client, monkeypatch, no_sleep):
     result = client.post("/api/fetch", json={
         "sources": ["linkedin"], "keywords": "FLE", "location": "Sweden; Canada",
     }).json()
-    assert seen == [("Sweden", "FLE"), ("Canada", "FLE")]
+    # « Offres max. par site » (60 par défaut) est réparti entre les deux lieux.
+    assert seen == [("Sweden", "FLE", 30), ("Canada", "FLE", 30)]
     assert result["new_total"] == 2
     assert client.get("/api/settings").json()["search_location"] == "Sweden; Canada"
     assert config.DEFAULT_SETTINGS["search_sources"] == ["linkedin"]
+
+    # Sans mot-clé : une seule requête LinkedIn par lieu.
+    seen.clear()
+    client.post("/api/fetch", json={"sources": ["linkedin"], "location": "Sweden; Norway; Canada"})
+    assert [(loc, kw) for loc, kw, _ in seen] == [(loc, fle_filter.LINKEDIN_QUERY) for loc in ("Sweden", "Norway", "Canada")]
+    assert {n for *_, n in seen} == {20}

@@ -57,15 +57,20 @@ Royaume-Uni. Pour ajouter un établissement, ajoutez une entrée au fichier JSON
 ## Filtre « stages FLE »
 
 Le détecteur (`app/fle_filter.py`) lit le titre de l'offre, puis sa description quand elle est connue.
-Sans mot-clé, la recherche lance plusieurs requêtes par site (`FLE`, `français langue étrangère`,
-`French teacher`, `French language assistant`) pour chaque lieu, et écarte les offres hors FLE.
+Sans mot-clé, LinkedIn reçoit une seule requête par lieu, avec des « OR »
+(`"French teacher" OR "French tutor" OR "enseignant de français"…`). « FLE » seul n'y est pas
+utilisé, car LinkedIn y associe « Fleet ». HelloWork et Welcome to the Jungle reçoivent `FLE`,
+`français langue étrangère` et `enseignant de français`. Les offres hors FLE sont écartées.
+LinkedIn ignore aujourd'hui son filtre « stage » : la recherche ramène surtout des **postes
+d'enseignant de français**, qui sont autant d'établissements à contacter pour une candidature spontanée.
 « French » seul ne suffit pas (« French-speaking sales intern » est écarté) : il faut un mot
 d'enseignement à côté. Le filtre se désactive dans **Paramètres > Automatisation** (ou dans la
 fenêtre de recherche). Les offres ajoutées à la main ou depuis l'annuaire restent toujours visibles.
 
 Le lieu par défaut est `Sweden; Norway; Denmark; Finland; Iceland; Estonia; Netherlands; Ireland;
-Canada`. Chaque lieu multiplie le nombre de requêtes LinkedIn (une pause de 2 s les sépare) : si
-LinkedIn répond HTTP 429, réduisez la liste ou espacez les recherches automatiques.
+Canada`. Le nombre « Offres max. par site » est réparti entre les lieux, et une pause de 1,5 s
+sépare les requêtes LinkedIn : une recherche sur les 9 pays prend environ 30 secondes. Si LinkedIn
+répond HTTP 429, raccourcissez la liste ou espacez les recherches automatiques.
 
 ## Recherche automatique
 

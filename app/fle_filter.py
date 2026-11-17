@@ -16,14 +16,20 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# Requêtes lancées sur chaque site quand le filtre FLE est actif et qu'aucun mot-clé
-# n'est saisi. Elles sont multipliées par le nombre de lieux : la liste reste courte pour
-# ne pas déclencher les limites de LinkedIn.
+# Requêtes lancées sur HelloWork et Welcome to the Jungle quand le filtre FLE est actif et
+# qu'aucun mot-clé n'est saisi (ces sites ne font qu'une recherche plein texte, sans « OR »).
 DEFAULT_QUERIES = (
     "FLE",
     "français langue étrangère",
-    "French teacher",
-    "French language assistant",
+    "enseignant de français",
+)
+
+# LinkedIn comprend « OR » et les guillemets : une seule requête par lieu suffit, ce qui
+# divise par quatre le nombre d'appels (LinkedIn limite vite les requêtes sans compte).
+# « FLE » seul est exclu : LinkedIn y associe « Fleet » (gestion de flotte).
+LINKEDIN_QUERY = (
+    '"French teacher" OR "French tutor" OR "French instructor" OR "French language assistant" '
+    'OR "français langue étrangère" OR "enseignant de français" OR "professeur de français"'
 )
 
 # Lieux proposés par défaut : pays nordiques, Europe du Nord, Canada. Séparés par « ; »
@@ -35,7 +41,7 @@ DEFAULT_LOCATIONS = (
 
 _FRENCH = r"(french|francais|fransk|franska|franske|ranska[n]?|frans|franse|franzosisch)"
 _TEACH = (
-    r"(teacher|teaching|tutor|tutoring|instructor|lecturer|educator|trainer|coach|tuteur|tutrice|"
+    r"(teacher|teaching|tutor|tutoring|instructor|lecturer|educator|tuteur|tutrice|"
     r"enseignant|enseignante|professeur|professeure|formateur|formatrice|animateur|animatrice|"
     r"larare|laerer|laerar|opettaja|docent|leraar|lehrer)"
 )
