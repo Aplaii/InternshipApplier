@@ -23,7 +23,7 @@ def add_offers(*offers: ScrapedOffer) -> list[int]:
 
 def sample(source_id="1", **kwargs) -> ScrapedOffer:
     data = {"source": "hellowork", "source_id": source_id, "url": f"https://www.hellowork.com/fr-fr/emplois/{source_id}.html",
-            "title": "Stage Data Scientist IA H/F", "company": "ACME", "location": "Lyon", "contract": "Stage · 6 mois",
+            "title": "Stage FLE – Alliance française H/F", "company": "ACME", "location": "Lyon", "contract": "Stage · 6 mois",
             "published_at": "2026-09-30T10:00:00Z"}
     data.update(kwargs)
     return ScrapedOffer(**data)

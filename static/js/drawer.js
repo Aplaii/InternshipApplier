@@ -190,8 +190,8 @@ function render(offer) {
     el("div", { class: "drawer-company", text: offer.company || "Entreprise non précisée" }),
     el("div", { class: "muted", text: [offer.location, offer.contract].filter(Boolean).join(" · ") }),
     el("div", { class: "muted small-text", text: dates.join(", ") }),
-    ...(offer.ai_topics?.length
-      ? [el("div", { class: "drawer-topics" }, offer.ai_topics.map((t) => el("span", { class: "chip topic-chip", text: t })))]
+    ...(offer.fle_topics?.length
+      ? [el("div", { class: "drawer-topics" }, offer.fle_topics.map((t) => el("span", { class: "chip topic-chip", text: t })))]
       : []),
     el("div", { class: "drawer-actions" }, [
       el("button", { type: "button", class: "btn primary", onclick: () => openExternal(offer.url) }, [icon("open_in_new"), "Voir l'offre"]),
@@ -227,7 +227,7 @@ function render(offer) {
 }
 
 async function deleteOffer(offer) {
-  const scraped = offer.source !== "manual";
+  const scraped = !["manual", "directory"].includes(offer.source);
   const ok = await confirmDialog({
     title: "Supprimer cette offre ?",
     text: [

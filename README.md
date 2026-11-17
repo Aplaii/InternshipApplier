@@ -1,17 +1,24 @@
-# InternshipApplier
+# InternshipApplier — stages FLE
 
-Application locale (interface web façon Gmail) pour trouver des **stages en intelligence
-artificielle**, suivre ses candidatures et rédiger les emails avec un modèle local (llama.cpp).
+Application locale (interface web façon Gmail) pour trouver des **stages de FLE (français langue
+étrangère)**, en priorité dans les **pays nordiques, en Europe du Nord et au Canada**, suivre ses
+candidatures et rédiger les emails avec un modèle local (llama.cpp).
 
-- **Recherche** sur HelloWork, LinkedIn et Welcome to the Jungle, ou ajout d'une offre par son lien.
-- **Filtre IA** : seules les offres en IA sont gardées (IA générative / LLM, NLP, vision par ordinateur,
-  deep learning, MLOps, machine learning, data science…). Chaque offre reçoit des étiquettes de thèmes.
+- **Annuaire des établissements FLE** : une soixantaine d'Alliances françaises, d'Instituts français,
+  d'universités, de lycées français et de ressources (Suède, Norvège, Danemark, Finlande, Islande,
+  pays baltes, Pays-Bas, Irlande, Royaume-Uni, Canada). Un clic les importe dans la boîte de réception
+  comme **candidatures spontanées**, avec l'adresse de contact quand elle est publique.
+- **Recherche** sur LinkedIn (par défaut), HelloWork et Welcome to the Jungle, sur **plusieurs lieux à
+  la fois** (« Sweden; Norway; Canada »), ou ajout d'une offre par son lien (FLE.fr, Fondation des
+  Alliances françaises…).
+- **Filtre FLE** : seules les offres d'enseignement du français sont gardées (FLE/FLS, enseignement du
+  français, assistanat de langue, Alliance / Institut français, DELF/DALF, didactique, immersion).
+  Les motifs couvrent le français, l'anglais et quelques formes nordiques et néerlandaises
+  (« fransklärare », « ranskan opettaja »…).
 - **Recherche automatique** : l'application relance seule la dernière recherche à intervalle régulier,
-  lit la description des nouvelles offres (adresse du recruteur, thèmes plus précis) et peut préparer
-  un brouillon d'email par l'IA. **Aucun email ne part sans vous** : les brouillons sont relus et
-  envoyés à la main.
-- **Tableau de bord** : offres suivies, candidatures, taux de réponse, activité par semaine, parcours
-  des candidatures, thèmes IA, sources et entreprises.
+  lit la description des nouvelles offres et peut préparer un brouillon d'email par l'IA.
+  **Aucun email ne part sans vous** : les brouillons sont relus et envoyés à la main.
+- **Tableau de bord** : offres suivies, candidatures, taux de réponse, thèmes FLE, sources, établissements.
 - **Envoi** des candidatures depuis votre boîte (SMTP), avec pièces jointes (CV, lettre).
 
 ## Lancer l'application
@@ -25,7 +32,7 @@ Python 3.10 ou plus récent est nécessaire. Les données (base SQLite, document
 
 ### IA locale (facultatif)
 
-La rédaction des emails utilise un serveur [llama.cpp](https://github.com/ggml-org/llama.cpp) :
+La rédaction des emails (consignes adaptées aux candidatures FLE, y compris spontanées) utilise un serveur [llama.cpp](https://github.com/ggml-org/llama.cpp) :
 
 ```bash
 llama-server -hf ggml-org/gemma-3-4b-it-GGUF --no-mmproj -c 8192 --port 8080
@@ -33,13 +40,32 @@ llama-server -hf ggml-org/gemma-3-4b-it-GGUF --no-mmproj -c 8192 --port 8080
 
 Adresse, modèle et consignes se règlent dans **Paramètres > IA**.
 
-## Filtre « stages en IA »
+## Annuaire des établissements FLE
 
-Le détecteur (`app/ai_filter.py`) lit le titre de l'offre, puis sa description quand elle est connue.
-Sans mot-clé, la recherche lance plusieurs requêtes par site (`intelligence artificielle`,
-`machine learning`, `data scientist`) et écarte les offres hors IA. Le filtre se désactive dans
-**Paramètres > Automatisation** (ou dans la fenêtre de recherche) ; les offres déjà en base ne sont
-alors plus masquées. Les offres ajoutées à la main restent toujours visibles.
+Les stages FLE à l'étranger sont rarement publiés sur les sites d'emploi : la plupart s'obtiennent
+par candidature spontanée. Le bouton **Annuaire des établissements FLE** (barre latérale) liste les
+établissements de `app/data/institutions.json`, filtrables par pays et par nom. Les établissements
+importés arrivent non lus dans la boîte de réception (source « Annuaire FLE »), avec une description
+qui sert à l'IA pour rédiger une candidature spontanée.
+
+Chaque entrée indique si son site a été vérifié (sinon la mention « à vérifier » s'affiche). Les emails
+listés sont des adresses génériques publiques ; pour les autres, passez par le formulaire de contact
+du site. Plusieurs établissements publient déjà des offres de stage FLE : Alliances françaises
+d'Ottawa, d'Edmonton, de Calgary et de Dublin, Institut français de Lituanie, Institut français du
+Royaume-Uni. Pour ajouter un établissement, ajoutez une entrée au fichier JSON (champ `id` unique).
+
+## Filtre « stages FLE »
+
+Le détecteur (`app/fle_filter.py`) lit le titre de l'offre, puis sa description quand elle est connue.
+Sans mot-clé, la recherche lance plusieurs requêtes par site (`FLE`, `français langue étrangère`,
+`French teacher`, `French language assistant`) pour chaque lieu, et écarte les offres hors FLE.
+« French » seul ne suffit pas (« French-speaking sales intern » est écarté) : il faut un mot
+d'enseignement à côté. Le filtre se désactive dans **Paramètres > Automatisation** (ou dans la
+fenêtre de recherche). Les offres ajoutées à la main ou depuis l'annuaire restent toujours visibles.
+
+Le lieu par défaut est `Sweden; Norway; Denmark; Finland; Iceland; Estonia; Netherlands; Ireland;
+Canada`. Chaque lieu multiplie le nombre de requêtes LinkedIn (une pause de 2 s les sépare) : si
+LinkedIn répond HTTP 429, réduisez la liste ou espacez les recherches automatiques.
 
 ## Recherche automatique
 

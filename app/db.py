@@ -15,9 +15,9 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import ai_filter, config
+from . import fle_filter, config
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS offers (
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS offers (
     draft_to           TEXT    NOT NULL DEFAULT '',
     draft_subject      TEXT    NOT NULL DEFAULT '',
     draft_body         TEXT    NOT NULL DEFAULT '',
-    ai_topics          TEXT    NOT NULL DEFAULT '',
+    fle_topics          TEXT    NOT NULL DEFAULT '',
     UNIQUE (source, source_id)
 );
 CREATE INDEX IF NOT EXISTS idx_offers_status ON offers (status);
@@ -74,16 +74,16 @@ FOLDERS = ("inbox", "unread", "starred", "archived", "all")
 # Colonnes renvoyées pour la liste (sans la description ni le texte des brouillons).
 LIST_COLUMNS = """
     id, source, source_id, url, title, company, location, contract, logo_url,
-    published_at, first_seen_at, status, status_changed_at, ai_topics,
+    published_at, first_seen_at, status, status_changed_at, fle_topics,
     is_read, is_starred, is_archived,
     (draft_body != '') AS has_draft,
     (notes != '') AS has_notes,
     (SELECT COUNT(*) FROM emails e WHERE e.offer_id = offers.id) AS emails_count
 """
 
-# Offres retenues par le filtre « stages en IA uniquement ». Les offres ajoutées à la main
+# Offres retenues par le filtre « stages FLE uniquement ». Les offres ajoutées à la main
 # restent toujours visibles : l'utilisateur les a choisies lui-même.
-AI_CLAUSE = "(ai_topics != '' OR source = 'manual')"
+FLE_CLAUSE = "(fle_topics != '' OR source IN ('manual', 'directory'))"
 
 SORT_ORDER = "ORDER BY COALESCE(published_at, first_seen_at) DESC, id DESC"
 
@@ -141,23 +141,26 @@ def init_db() -> None:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         conn.executescript(SCHEMA)
         columns = {r["name"] for r in conn.execute("PRAGMA table_info(offers)")}
-        if "ai_topics" not in columns:  # base créée avant le filtre IA (version 1)
-            conn.execute("ALTER TABLE offers ADD COLUMN ai_topics TEXT NOT NULL DEFAULT ''")
+        if "fle_topics" not in columns:
+            if "ai_topics" in columns:  # version 2 : thèmes IA, recalculés en thèmes FLE plus bas
+                conn.execute("ALTER TABLE offers RENAME COLUMN ai_topics TO fle_topics")
+            else:  # version 1 : pas encore de thèmes
+                conn.execute("ALTER TABLE offers ADD COLUMN fle_topics TEXT NOT NULL DEFAULT ''")
         if version < SCHEMA_VERSION:
-            refresh_ai_topics(conn)
+            refresh_fle_topics(conn)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 def _topics_value(title: str | None, description: str | None) -> str:
-    """Thèmes IA stockés en base, séparés par « | » ('' = offre hors IA)."""
-    return "|".join(ai_filter.detect_topics(title, description))
+    """Thèmes FLE stockés en base, séparés par « | » ('' = offre hors FLE)."""
+    return "|".join(fle_filter.detect_topics(title, description))
 
 
-def refresh_ai_topics(conn: sqlite3.Connection) -> None:
-    """Recalcule les thèmes IA de toutes les offres (après une mise à jour du détecteur)."""
+def refresh_fle_topics(conn: sqlite3.Connection) -> None:
+    """Recalcule les thèmes FLE de toutes les offres (après une mise à jour du détecteur)."""
     rows = conn.execute("SELECT id, title, description FROM offers").fetchall()
     conn.executemany(
-        "UPDATE offers SET ai_topics = ? WHERE id = ?",
+        "UPDATE offers SET fle_topics = ? WHERE id = ?",
         [(_topics_value(r["title"], r["description"]), r["id"]) for r in rows],
     )
 
@@ -170,8 +173,8 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     for key in _BOOL_FIELDS:
         if key in data:
             data[key] = bool(data[key])
-    if "ai_topics" in data:
-        data["ai_topics"] = [t for t in (data["ai_topics"] or "").split("|") if t]
+    if "fle_topics" in data:
+        data["fle_topics"] = [t for t in (data["fle_topics"] or "").split("|") if t]
     if "contact_emails" in data:
         try:
             data["contact_emails"] = json.loads(data["contact_emails"] or "[]")
@@ -196,7 +199,7 @@ def upsert_offers(conn: sqlite3.Connection, offers: Iterable[Any]) -> int:
         if row is None:
             conn.execute(
                 """INSERT INTO offers (source, source_id, url, title, company, location, contract,
-                                       logo_url, published_at, first_seen_at, last_seen_at, ai_topics)
+                                       logo_url, published_at, first_seen_at, last_seen_at, fle_topics)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (offer.source, offer.source_id, offer.url, offer.title, offer.company,
                  offer.location, offer.contract, offer.logo_url, offer.published_at, now, now,
@@ -207,7 +210,7 @@ def upsert_offers(conn: sqlite3.Connection, offers: Iterable[Any]) -> int:
             conn.execute(
                 """UPDATE offers SET url = ?, title = ?, company = ?, location = ?, contract = ?,
                           logo_url = ?, published_at = COALESCE(?, published_at), last_seen_at = ?,
-                          ai_topics = ?
+                          fle_topics = ?
                    WHERE id = ?""",
                 (offer.url, offer.title, offer.company, offer.location, offer.contract,
                  offer.logo_url, offer.published_at, now,
@@ -223,11 +226,11 @@ def list_offers(
     status: str | None = None,
     source: str | None = None,
     q: str | None = None,
-    ai_only: bool = False,
+    fle_only: bool = False,
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[dict[str, Any]], int]:
-    where: list[str] = [AI_CLAUSE] if ai_only else []
+    where: list[str] = [FLE_CLAUSE] if fle_only else []
     args: list[Any] = []
     if folder == "inbox":
         where.append("is_archived = 0")
@@ -257,9 +260,9 @@ def list_offers(
     return [_row_to_dict(r) for r in rows], total
 
 
-def counts(conn: sqlite3.Connection, *, ai_only: bool = False) -> dict[str, Any]:
-    scope = f"WHERE {AI_CLAUSE}" if ai_only else ""
-    also = f"AND {AI_CLAUSE}" if ai_only else ""
+def counts(conn: sqlite3.Connection, *, fle_only: bool = False) -> dict[str, Any]:
+    scope = f"WHERE {FLE_CLAUSE}" if fle_only else ""
+    also = f"AND {FLE_CLAUSE}" if fle_only else ""
     row = conn.execute(
         f"""SELECT COUNT(*) AS total,
                   COALESCE(SUM(is_archived = 0), 0) AS inbox,
@@ -278,9 +281,9 @@ def counts(conn: sqlite3.Connection, *, ai_only: bool = False) -> dict[str, Any]
     ):
         by_source[r["source"]] = {"total": r["n"], "unread": r["unread"]}
     hidden = 0
-    if ai_only:
-        hidden = conn.execute(f"SELECT COUNT(*) FROM offers WHERE NOT ({AI_CLAUSE})").fetchone()[0]
-    return {**dict(row), "by_status": by_status, "by_source": by_source, "hidden_non_ai": hidden}
+    if fle_only:
+        hidden = conn.execute(f"SELECT COUNT(*) FROM offers WHERE NOT ({FLE_CLAUSE})").fetchone()[0]
+    return {**dict(row), "by_status": by_status, "by_source": by_source, "hidden_non_fle": hidden}
 
 
 def _week_start(iso: str | None) -> str | None:
@@ -294,11 +297,11 @@ def _week_start(iso: str | None) -> str | None:
     return (day - timedelta(days=day.weekday())).isoformat()
 
 
-def stats(conn: sqlite3.Connection, *, ai_only: bool = False, weeks: int = 12) -> dict[str, Any]:
-    """Chiffres du tableau de bord : entonnoir, activité hebdomadaire, sources, thèmes IA."""
-    scope = f"WHERE {AI_CLAUSE}" if ai_only else ""
+def stats(conn: sqlite3.Connection, *, fle_only: bool = False, weeks: int = 12) -> dict[str, Any]:
+    """Chiffres du tableau de bord : entonnoir, activité hebdomadaire, sources, thèmes FLE."""
+    scope = f"WHERE {FLE_CLAUSE}" if fle_only else ""
     rows = conn.execute(
-        f"""SELECT id, source, company, status, first_seen_at, ai_topics, is_archived,
+        f"""SELECT id, source, company, status, first_seen_at, fle_topics, is_archived,
                    (SELECT MIN(sent_at) FROM emails e WHERE e.offer_id = offers.id) AS first_sent_at
             FROM offers {scope}"""
     ).fetchall()
@@ -316,7 +319,7 @@ def stats(conn: sqlite3.Connection, *, ai_only: bool = False, weeks: int = 12) -
     for r in rows:
         by_status[r["status"]] = by_status.get(r["status"], 0) + 1
         by_source[r["source"]] = by_source.get(r["source"], 0) + 1
-        for topic in filter(None, (r["ai_topics"] or "").split("|")):
+        for topic in filter(None, (r["fle_topics"] or "").split("|")):
             topics[topic] = topics.get(topic, 0) + 1
         week = _week_start(r["first_seen_at"])
         if week in found:
@@ -333,7 +336,7 @@ def stats(conn: sqlite3.Connection, *, ai_only: bool = False, weeks: int = 12) -
 
     applied_total = sum(by_status[s] for s in ("sent", "answered", "refused", "interview"))
     replies = sum(by_status[s] for s in ("answered", "refused", "interview"))
-    topic_order = [t for t, _ in ai_filter.TOPICS]
+    topic_order = [t for t, _ in fle_filter.TOPICS]
     return {
         "total": len(rows),
         "active": sum(1 for r in rows if not r["is_archived"]),
@@ -395,7 +398,7 @@ def insert_manual_offer(conn: sqlite3.Connection, offer: Any, description: str |
     cur = conn.execute(
         """INSERT INTO offers (source, source_id, url, title, company, location, contract, logo_url,
                                published_at, first_seen_at, last_seen_at, description,
-                               details_fetched_at, is_read, ai_topics)
+                               details_fetched_at, is_read, fle_topics)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
         (offer.source, offer.source_id, offer.url, offer.title, offer.company, offer.location,
          offer.contract, offer.logo_url, offer.published_at, now, now,
@@ -416,7 +419,7 @@ def set_details(
     topics = _topics_value(row["title"] if row else "", description)
     conn.execute(
         """UPDATE offers SET description = ?, contact_emails = ?, details_fetched_at = ?,
-                             ai_topics = ?
+                             fle_topics = ?
            WHERE id = ?""",
         (description, json.dumps(emails), utcnow_iso(), topics, offer_id),
     )

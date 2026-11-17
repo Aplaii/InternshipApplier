@@ -24,7 +24,7 @@ const int = (v) => parseInt(v, 10);
 const NUMBER_KEYS = {
   llm_temperature: parseFloat, llm_max_tokens: int, smtp_port: int, auto_interval_hours: parseFloat, auto_draft_max: int,
 };
-const BOOL_KEYS = ["llm_disable_thinking", "smtp_bcc_self", "ai_only", "auto_enabled", "auto_fetch_details", "auto_draft"];
+const BOOL_KEYS = ["llm_disable_thinking", "smtp_bcc_self", "fle_only", "auto_enabled", "auto_fetch_details", "auto_draft"];
 const SECRET_KEYS = ["llm_api_key", "smtp_password"];
 
 export function getSettings() {
@@ -57,7 +57,7 @@ export function openFindDialog() {
   form.elements.location.value = s.search_location ?? "France";
   form.elements.recency.value = s.search_recency || "week";
   form.elements.max_per_source.value = s.search_max_per_source || 60;
-  form.elements.ai_only.checked = s.ai_only !== false;
+  form.elements.fle_only.checked = s.fle_only !== false;
   const chosen = new Set(s.search_sources || SEARCH_SOURCES.map((x) => x.id));
   $("find-sources").replaceChildren(...SEARCH_SOURCES.map((source) => {
     const input = el("input", { type: "checkbox", name: "sources", value: source.id });
@@ -92,7 +92,7 @@ function bindFindDialog() {
       sources,
       recency: form.elements.recency.value,
       max_per_source: max,
-      ai_only: form.elements.ai_only.checked,
+      fle_only: form.elements.fle_only.checked,
     });
   });
 }
@@ -307,7 +307,7 @@ function relativeTime(iso) {
 function summaryText(summary) {
   if (!summary) return "";
   const parts = [`${summary.new_total} nouvelle${summary.new_total > 1 ? "s" : ""} offre${summary.new_total > 1 ? "s" : ""}`];
-  if (summary.filtered_total) parts.push(`${summary.filtered_total} hors IA écartée${summary.filtered_total > 1 ? "s" : ""}`);
+  if (summary.filtered_total) parts.push(`${summary.filtered_total} hors FLE écartée${summary.filtered_total > 1 ? "s" : ""}`);
   if (summary.details) parts.push(`${summary.details} description${summary.details > 1 ? "s" : ""} lue${summary.details > 1 ? "s" : ""}`);
   if (summary.drafted) parts.push(`${summary.drafted} brouillon${summary.drafted > 1 ? "s" : ""} préparé${summary.drafted > 1 ? "s" : ""}`);
   return parts.join(" · ");
@@ -365,7 +365,7 @@ async function runAutomationNow() {
     }
   }
   const n = status.last_summary?.new_total || 0;
-  toast(n ? `${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} en IA.` : "Recherche terminée : aucune nouvelle offre.", { timeout: 6000 });
+  toast(n ? `${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} FLE.` : "Recherche terminée : aucune nouvelle offre.", { timeout: 6000 });
   await ctx.onChange();
 }
 
@@ -488,10 +488,132 @@ function bindSettingsDialog() {
   });
 }
 
+// --------------------------------------------------------------------------- annuaire FLE
+
+let directory = null; // { updated, note, items }
+
+export async function openDirectoryDialog() {
+  const dialog = $("directory-dialog");
+  showFormError("directory-error", "");
+  $("directory-list").replaceChildren(el("p", { class: "muted", text: "Chargement de l'annuaire…" }));
+  dialog.showModal();
+  try {
+    directory = await api("/api/institutions");
+  } catch (error) {
+    showFormError("directory-error", error.message);
+    return;
+  }
+  const select = $("directory-country");
+  const countries = [...new Set(directory.items.map((i) => i.country))];
+  select.replaceChildren(
+    el("option", { value: "", text: "Tous les pays" }),
+    ...countries.map((c) => el("option", { value: c, text: c })),
+  );
+  $("directory-note").textContent = `Annuaire mis à jour le ${directory.updated}. ${directory.note || ""}`;
+  $("directory-all").checked = false;
+  renderDirectory();
+}
+
+function directoryMatches(item) {
+  const country = $("directory-country").value;
+  const q = $("directory-filter").value.trim().toLocaleLowerCase("fr");
+  if (country && item.country !== country) return false;
+  if (!q) return true;
+  return [item.name, item.city, item.kind, item.country, item.notes]
+    .join(" ").toLocaleLowerCase("fr").includes(q);
+}
+
+function renderDirectory() {
+  if (!directory) return;
+  const visible = directory.items.filter(directoryMatches);
+  const list = $("directory-list");
+  if (!visible.length) {
+    list.replaceChildren(el("p", { class: "muted", style: "padding: 12px", text: "Aucun établissement ne correspond." }));
+    updateDirectoryCount();
+    return;
+  }
+  const nodes = [];
+  let country = null;
+  for (const item of visible) {
+    if (item.country !== country) {
+      country = item.country;
+      nodes.push(el("h3", { class: "directory-group", text: country }));
+    }
+    const imported = item.offer_id != null;
+    const id = `dir-${item.id}`;
+    nodes.push(el("div", { class: "directory-item" }, [
+      el("input", { type: "checkbox", id, value: item.id, disabled: imported, "aria-label": item.name }),
+      el("label", { for: id, class: "directory-name" }, [
+        item.name,
+        imported ? el("span", { class: "directory-tag", text: "déjà importé" }) : null,
+        item.verified ? null : el("span", { class: "directory-tag warn", title: "Site non confirmé : vérifiez-le avant d'écrire", text: "à vérifier" }),
+      ]),
+      el("div", { class: "directory-meta" }, [
+        [item.kind, item.city].filter(Boolean).join(" · "),
+        item.website ? " · " : "",
+        item.website ? el("a", { href: item.website, target: "_blank", rel: "noopener noreferrer", text: "site" }) : null,
+        item.email ? ` · ${item.email}` : "",
+        imported ? " · " : "",
+        imported ? el("button", {
+          type: "button", class: "link-btn", text: "ouvrir",
+          onclick: () => { $("directory-dialog").close(); ctx.onOpenOffer(item.offer_id); },
+        }) : null,
+      ]),
+      el("div", { class: "directory-notes", text: item.notes || "" }),
+    ]));
+  }
+  list.replaceChildren(...nodes);
+  updateDirectoryCount();
+}
+
+function selectedDirectoryIds() {
+  return [...$("directory-list").querySelectorAll("input[type=checkbox]:checked")].map((i) => i.value);
+}
+
+function updateDirectoryCount() {
+  const n = selectedDirectoryIds().length;
+  $("directory-count").textContent = n ? `${n} sélectionné${n > 1 ? "s" : ""}` : "";
+  $("directory-import").disabled = !n;
+}
+
+function bindDirectoryDialog() {
+  const dialog = $("directory-dialog");
+  closeOnCancel(dialog);
+  $("directory-filter").addEventListener("input", renderDirectory);
+  $("directory-country").addEventListener("change", renderDirectory);
+  $("directory-list").addEventListener("change", updateDirectoryCount);
+  $("directory-all").addEventListener("change", (event) => {
+    for (const box of $("directory-list").querySelectorAll("input[type=checkbox]:not(:disabled)")) {
+      box.checked = event.target.checked;
+    }
+    updateDirectoryCount();
+  });
+  $("directory-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const ids = selectedDirectoryIds();
+    if (!ids.length) return;
+    showFormError("directory-error", "");
+    const button = $("directory-import");
+    button.disabled = true;
+    try {
+      const result = await api("/api/institutions/import", { method: "POST", json: { ids } });
+      dialog.close();
+      const n = result.imported;
+      toast(n ? `${n} établissement${n > 1 ? "s" : ""} ajouté${n > 1 ? "s" : ""} à la boîte de réception.` : "Ces établissements étaient déjà importés.");
+      await ctx.onChange();
+    } catch (error) {
+      showFormError("directory-error", error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 export function initDialogs(options) {
   ctx = { ...ctx, ...options };
   hydrateIcons(document.getElementById("settings-dialog"));
   bindFindDialog();
   bindAddDialog();
+  bindDirectoryDialog();
   bindSettingsDialog();
 }

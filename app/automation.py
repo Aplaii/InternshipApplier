@@ -1,9 +1,10 @@
 """Recherche d'offres et automatisation.
 
-- ``Automation.search`` : interroge les sites (plusieurs requêtes par site si besoin),
-  écarte les offres hors IA quand le filtre est actif, enregistre les nouvelles offres ;
+- ``Automation.search`` : interroge les sites (plusieurs requêtes par site si besoin,
+  et plusieurs lieux séparés par « ; »), écarte les offres hors FLE quand le filtre est
+  actif, enregistre les nouvelles offres ;
 - ``Automation.process_new`` : pour les nouvelles offres, lit la description en ligne
-  (adresse du recruteur, thèmes IA plus précis) puis, si demandé, prépare un brouillon
+  (adresse du recruteur, thèmes FLE plus précis) puis, si demandé, prépare un brouillon
   d'email avec le modèle local ;
 - ``Automation.scheduler`` : tâche de fond qui relance la recherche enregistrée à
   intervalle régulier (« Recherche automatique » dans les paramètres).
@@ -22,7 +23,7 @@ from typing import Any
 import httpx
 from starlette.concurrency import run_in_threadpool
 
-from . import ai_filter, assistant, config, db, llm
+from . import fle_filter, assistant, config, db, llm
 from .scrapers import SEARCHERS, ScrapedOffer, SearchParams, SourceError, fetch_details, make_client
 
 log = logging.getLogger("internship_applier")
@@ -31,6 +32,9 @@ log = logging.getLogger("internship_applier")
 DETAILS_DELAY = 1.0
 # Nombre maximal de descriptions lues après une recherche.
 DETAILS_MAX = 40
+# Pause entre deux recherches LinkedIn (une par lieu et par requête) : LinkedIn limite
+# vite les requêtes sans compte (HTTP 429).
+LINKEDIN_QUERY_DELAY = 2.0
 # Fréquence à laquelle la tâche de fond vérifie s'il faut relancer la recherche.
 CHECK_EVERY = 60.0
 
@@ -43,12 +47,12 @@ class SourceOutcome:
     error: str | None = None
 
 
-def queries_for(keywords: str, ai_only: bool) -> list[str]:
+def queries_for(keywords: str, fle_only: bool) -> list[str]:
     """Requêtes à lancer sur chaque site."""
     keywords = keywords.strip()
     if keywords:
         return [keywords]
-    return list(ai_filter.DEFAULT_QUERIES) if ai_only else [""]
+    return list(fle_filter.DEFAULT_QUERIES) if fle_only else [""]
 
 
 def _parse_iso(value: Any) -> datetime | None:
@@ -80,13 +84,16 @@ class Automation:
     # ------------------------------------------------------------------ recherche
 
     async def _search_source(
-        self, client: httpx.AsyncClient, source: str, params: SearchParams, queries: list[str], ai_only: bool
+        self, client: httpx.AsyncClient, source: str, params: SearchParams, queries: list[str], fle_only: bool
     ) -> SourceOutcome:
         outcome = SourceOutcome(source)
         merged: dict[str, ScrapedOffer] = {}
-        for query in queries:
+        combos = [(loc, q) for loc in fle_filter.split_locations(params.location) for q in queries]
+        for index, (location, query) in enumerate(combos):
+            if index and source == "linkedin":
+                await asyncio.sleep(LINKEDIN_QUERY_DELAY)
             try:
-                offers = await SEARCHERS[source](client, replace(params, keywords=query))
+                offers = await SEARCHERS[source](client, replace(params, keywords=query, location=location))
             except SourceError as exc:
                 offers, outcome.error = exc.partial, exc.message
             except Exception as exc:  # bug d'analyse, site modifié…
@@ -99,20 +106,20 @@ class Automation:
                 break
         outcome.found = len(merged)
         outcome.offers = [
-            o for o in merged.values() if not ai_only or ai_filter.is_ai_offer(o.title)
+            o for o in merged.values() if not fle_only or fle_filter.is_fle_offer(o.title)
         ]
         return outcome
 
     async def search(
-        self, params: SearchParams, sources: list[str], *, ai_only: bool
+        self, params: SearchParams, sources: list[str], *, fle_only: bool
     ) -> dict[str, Any]:
         """Lance la recherche et enregistre les offres. Le verrou doit être pris par l'appelant."""
-        queries = queries_for(params.keywords, ai_only)
+        queries = queries_for(params.keywords, fle_only)
         self.running = "search"
         try:
             async with make_client() as client:
                 outcomes = await asyncio.gather(
-                    *(self._search_source(client, s, params, queries, ai_only) for s in sources)
+                    *(self._search_source(client, s, params, queries, fle_only) for s in sources)
                 )
         finally:
             self.running = None
@@ -142,7 +149,7 @@ class Automation:
             "results": results,
             "new_total": sum(r["new"] for r in results),
             "filtered_total": sum(r["found"] - r["kept"] for r in results),
-            "ai_only": ai_only,
+            "fle_only": fle_only,
             "queries": queries,
             "new_ids": new_ids,
         }
@@ -279,7 +286,7 @@ class Automation:
         params, sources = self.saved_search(settings)
         started = db.utcnow_iso()
         try:
-            result = await self.search(params, sources, ai_only=bool(settings.get("ai_only")))
+            result = await self.search(params, sources, fle_only=bool(settings.get("fle_only")))
             processed = await self.process_new(settings, result["new_ids"])
             summary = {
                 "at": started,

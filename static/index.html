@@ -46,6 +46,7 @@
       <ul class="nav" id="nav-status"></ul>
       <h2 class="nav-title">Sources</h2>
       <ul class="nav" id="nav-source"></ul>
+      <button id="directory-btn" class="nav-link-btn" type="button"><span data-icon="school"></span>Annuaire des établissements FLE</button>
       <button id="add-offer-btn" class="nav-link-btn" type="button"><span data-icon="add_link"></span>Ajouter une offre par lien</button>
     </nav>
     <div id="sidebar-backdrop" class="backdrop" hidden></div>
@@ -111,7 +112,7 @@
           <option value="fr">Français</option>
           <option value="en">Anglais</option>
         </select>
-        <input id="ai-instructions" type="text" maxlength="2000" placeholder="Consigne facultative (ex. : plus court, insister sur mon projet Python)">
+        <input id="ai-instructions" type="text" maxlength="2000" placeholder="Consigne facultative (ex. : plus court, insister sur mon expérience en classe)">
       </div>
       <div id="ai-status" class="ai-status" hidden></div>
       <textarea id="compose-text" class="compose-text" placeholder="Votre message… (ou cliquez sur « Rédiger avec l'IA »)"></textarea>
@@ -133,8 +134,8 @@
     <form method="dialog" id="find-form" novalidate>
       <h2>Chercher des offres de stage</h2>
       <p class="muted">Les nouvelles offres arrivent dans la boîte de réception. Les offres déjà connues ne sont pas dupliquées.</p>
-      <label class="field"><span>Mots-clés</span><input name="keywords" type="text" maxlength="200" placeholder="ex. LLM, vision par ordinateur, NLP (vide = tous les stages en IA)"></label>
-      <label class="field"><span>Lieu</span><input name="location" type="text" maxlength="120" placeholder="ex. Lyon, Paris, Bretagne (vide = toute la France)"></label>
+      <label class="field"><span>Mots-clés</span><input name="keywords" type="text" maxlength="200" placeholder="ex. Alliance française, French tutor (vide = tous les stages FLE)"></label>
+      <label class="field"><span>Lieu</span><input name="location" type="text" maxlength="500" placeholder="ex. Sweden; Norway; Canada (plusieurs lieux séparés par « ; »)"></label>
       <fieldset class="field">
         <legend>Sites</legend>
         <div class="checks" id="find-sources"></div>
@@ -151,7 +152,7 @@
         </label>
         <label class="field"><span>Offres max. par site</span><input name="max_per_source" type="number" min="10" max="300" step="1"></label>
       </div>
-      <label class="check"><input name="ai_only" type="checkbox"> Uniquement les stages en intelligence artificielle (IA, machine learning, data science, LLM, vision, NLP…)</label>
+      <label class="check"><input name="fle_only" type="checkbox"> Uniquement les stages FLE (enseignement du français, assistanat de langue, Alliance / Institut français, DELF…)</label>
       <div id="find-error" class="form-error" hidden></div>
       <div class="dialog-actions">
         <button type="button" class="btn" data-close>Annuler</button>
@@ -160,11 +161,33 @@
     </form>
   </dialog>
 
+  <!-- Annuaire des établissements FLE -->
+  <dialog id="directory-dialog" class="dialog wide">
+    <form method="dialog" id="directory-form" novalidate>
+      <h2>Annuaire des établissements FLE</h2>
+      <p class="muted">Alliances françaises, Instituts français, universités et lycées français des pays nordiques, d'Europe du Nord et du Canada. Les stages FLE s'y obtiennent surtout par candidature spontanée : les établissements importés arrivent dans la boîte de réception, prêts pour un brouillon d'email.</p>
+      <div class="field-row">
+        <label class="field grow"><span>Filtrer</span><input id="directory-filter" type="search" placeholder="Nom, ville, type (ex. Alliance, Oslo, université)"></label>
+        <label class="field"><span>Pays</span><select id="directory-country"><option value="">Tous les pays</option></select></label>
+      </div>
+      <label class="check"><input id="directory-all" type="checkbox"> Tout sélectionner (établissements affichés et pas encore importés)</label>
+      <div id="directory-list" class="directory-list"></div>
+      <p id="directory-note" class="muted small-text"></p>
+      <div id="directory-error" class="form-error" hidden></div>
+      <div class="dialog-actions">
+        <span id="directory-count" class="muted"></span>
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close>Fermer</button>
+        <button type="submit" class="btn primary" id="directory-import">Importer la sélection</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Ajout manuel -->
   <dialog id="add-dialog" class="dialog">
     <form method="dialog" id="add-form" novalidate>
       <h2>Ajouter une offre par son lien</h2>
-      <p class="muted">Pour suivre une offre vue ailleurs (Indeed, JobTeaser, site d'entreprise…).</p>
+      <p class="muted">Pour suivre une offre vue ailleurs (FLE.fr, France Éducation international, site d'un établissement…).</p>
       <div class="field-row">
         <label class="field grow"><span>Lien de l'offre</span><input name="url" type="url" required maxlength="2000" placeholder="https://…"></label>
         <button type="button" class="btn tonal align-end" id="add-read">Lire l'offre</button>
@@ -277,13 +300,13 @@
 
       <section class="tab-panel" data-panel="auto" hidden>
         <p class="muted">L'application peut chercher seule de nouvelles offres pendant qu'elle est ouverte, avec les critères de votre dernière recherche (mots-clés, lieu, sites). Les emails ne partent <strong>jamais</strong> sans vous : l'IA prépare seulement des brouillons, que vous relisez avant d'envoyer.</p>
-        <label class="check"><input name="ai_only" type="checkbox"> N'afficher et ne garder que les stages en intelligence artificielle</label>
+        <label class="check"><input name="fle_only" type="checkbox"> N'afficher et ne garder que les stages FLE</label>
         <label class="check"><input name="auto_enabled" type="checkbox"> Chercher de nouvelles offres automatiquement</label>
         <div class="field-row">
           <label class="field"><span>Toutes les (heures)</span><input name="auto_interval_hours" type="number" min="1" max="168" step="1"></label>
           <label class="field"><span>Brouillons IA max. par passage</span><input name="auto_draft_max" type="number" min="1" max="30" step="1"></label>
         </div>
-        <label class="check"><input name="auto_fetch_details" type="checkbox"> Lire la description des nouvelles offres (adresse du recruteur, thèmes IA plus précis)</label>
+        <label class="check"><input name="auto_fetch_details" type="checkbox"> Lire la description des nouvelles offres (adresse du recruteur, thèmes FLE plus précis)</label>
         <label class="check"><input name="auto_draft" type="checkbox"> Préparer un brouillon d'email avec l'IA pour chaque nouvelle offre (serveur llama.cpp requis)</label>
         <div id="auto-status" class="auto-status"></div>
         <div class="field-row">

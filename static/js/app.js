@@ -8,7 +8,7 @@ import {
 import { initCompose, openCompose } from "./compose.js";
 import { initDrawer, openDrawer, refreshDrawer } from "./drawer.js";
 import {
-  initDialogs, openFindDialog, openSettings, openAddDialog, getSettings, loadSettings, refreshAutomation,
+  initDialogs, openFindDialog, openSettings, openAddDialog, openDirectoryDialog, getSettings, loadSettings, refreshAutomation,
 } from "./dialogs.js";
 import { renderStats } from "./stats.js";
 
@@ -55,6 +55,7 @@ function viewTitle() {
 
 function sourceLabel(source) {
   if (source === "manual") return "Ajoutées par lien";
+  if (source === "directory") return "Annuaire FLE (candidatures spontanées)";
   return state.meta?.sources?.[source] || SOURCE_SHORT[source] || source;
 }
 
@@ -191,8 +192,8 @@ function renderRow(offer) {
     }));
   }
   if (offer.has_draft) chips.push(el("span", { class: "chip draft-chip", text: "Brouillon", title: "Un brouillon d'email est enregistré" }));
-  for (const topic of (offer.ai_topics || []).slice(0, 2)) {
-    chips.push(el("span", { class: "chip topic-chip", text: topic, title: "Thème IA détecté dans l'offre" }));
+  for (const topic of (offer.fle_topics || []).slice(0, 2)) {
+    chips.push(el("span", { class: "chip topic-chip", text: topic, title: "Thème FLE détecté dans l'offre" }));
   }
   if (offer.emails_count > 1) chips.push(el("span", { class: "chip count-chip", text: `${offer.emails_count} emails`, title: "Emails envoyés pour cette offre" }));
 
@@ -237,9 +238,9 @@ function renderList() {
     $("empty-state").hidden = true;
     return;
   }
-  const hidden = state.counts?.hidden_non_ai || 0;
+  const hidden = state.counts?.hidden_non_fle || 0;
   const hiddenNote = hidden
-    ? el("p", { class: "muted", text: `${hidden} offre${hidden > 1 ? "s" : ""} hors IA ${hidden > 1 ? "sont masquées" : "est masquée"} (filtre « stages en IA uniquement » dans Paramètres > Automatisation).` })
+    ? el("p", { class: "muted", text: `${hidden} offre${hidden > 1 ? "s" : ""} hors FLE ${hidden > 1 ? "sont masquées" : "est masquée"} (filtre « stages FLE uniquement » dans Paramètres > Automatisation).` })
     : null;
   if (state.q) {
     showEmpty([el("p", { text: `Aucune offre ne correspond à « ${state.q} » dans ce dossier.` }), hiddenNote]);
@@ -457,7 +458,7 @@ function bindToolbar() {
       sources: settings.search_sources,
       recency: settings.search_recency,
       max_per_source: settings.search_max_per_source,
-      ai_only: settings.ai_only,
+      fle_only: settings.fle_only,
     });
   });
   $("prev-page").addEventListener("click", () => {
@@ -562,6 +563,7 @@ function bindSidebar() {
   });
   $("find-btn").addEventListener("click", () => openFindDialog());
   $("add-offer-btn").addEventListener("click", () => openAddDialog());
+  $("directory-btn").addEventListener("click", () => openDirectoryDialog());
   $("settings-btn").addEventListener("click", () => openSettings());
   window.addEventListener("hashchange", () => {
     if (applySearchHash()) return;
@@ -602,17 +604,17 @@ export async function runSearch(params) {
   $("refresh-btn").classList.add("spinning");
   $("refresh-btn").disabled = true;
   const names = params.sources.map((s) => SOURCE_SHORT[s] || s).join(", ");
-  const what = [params.keywords ? `« ${params.keywords} »` : "stages en IA", params.location].filter(Boolean).join(" · ");
+  const what = [params.keywords ? `« ${params.keywords} »` : "stages FLE", params.location].filter(Boolean).join(" · ");
   showBanner("loading", `Recherche en cours sur ${names}…`, what ? [{ text: what }] : []);
   try {
     const result = await api("/api/fetch", { method: "POST", json: params });
     await loadSettings();
-    const kept = (r) => (result.ai_only ? `, dont ${r.kept} en IA` : "");
+    const kept = (r) => (result.fle_only ? `, dont ${r.kept} en FLE` : "");
     const lines = result.results.map((r) => (r.error
       ? { text: `${r.label} : ${r.error}${r.found ? ` (${r.found} offres récupérées avant l'erreur${kept(r)}, ${r.new} nouvelles)` : ""}`, error: true }
       : { text: `${r.label} : ${r.found} offre${r.found > 1 ? "s" : ""} trouvée${r.found > 1 ? "s" : ""}${kept(r)}, ${r.new} nouvelle${r.new > 1 ? "s" : ""}` }));
     if (result.filtered_total) {
-      lines.push({ text: `${result.filtered_total} offre${result.filtered_total > 1 ? "s" : ""} hors IA écartée${result.filtered_total > 1 ? "s" : ""}.` });
+      lines.push({ text: `${result.filtered_total} offre${result.filtered_total > 1 ? "s" : ""} hors FLE écartée${result.filtered_total > 1 ? "s" : ""}.` });
     }
     if (result.details) lines.push({ text: `Description lue pour ${result.details} nouvelle${result.details > 1 ? "s" : ""} offre${result.details > 1 ? "s" : ""}.` });
     const failed = result.results.some((r) => r.error);
@@ -653,7 +655,7 @@ async function pollAutomation() {
     const drafts = summary.drafted ? ` · ${summary.drafted} brouillon${summary.drafted > 1 ? "s" : ""} préparé${summary.drafted > 1 ? "s" : ""}` : "";
     if (n || summary.errors?.length) {
       toast(n
-        ? `Recherche automatique : ${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} en IA${drafts}`
+        ? `Recherche automatique : ${n} nouvelle${n > 1 ? "s" : ""} offre${n > 1 ? "s" : ""} FLE${drafts}`
         : `Recherche automatique : ${summary.errors.join(" ; ")}`, { error: !n, timeout: 10000 });
     }
     await refreshAll();

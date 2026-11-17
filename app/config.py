@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from . import fle_filter
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = Path(os.environ.get("IA_DATA_DIR", BASE_DIR / "data")).resolve()
@@ -17,12 +19,14 @@ PORT = int(os.environ.get("IA_PORT", "8000"))
 # Statuts de suivi d'une candidature (l'ordre est celui affiché dans l'interface).
 STATUSES = ("new", "sent", "answered", "refused", "interview")
 
-# Sources interrogées automatiquement. "manual" = offre ajoutée à la main.
+# Sources interrogées automatiquement. "manual" = offre ajoutée à la main,
+# "directory" = établissement importé depuis l'annuaire FLE.
 SEARCH_SOURCES = ("hellowork", "linkedin", "wttj")
 SOURCE_LABELS = {
     "hellowork": "HelloWork",
     "linkedin": "LinkedIn",
     "wttj": "Welcome to the Jungle",
+    "directory": "Annuaire FLE",  # établissements de app/data/institutions.json
     "manual": "Manuel",
 }
 
@@ -59,12 +63,15 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "smtp_bcc_self": False,
     # --- Recherche d'offres ---
     "search_keywords": "",
-    "search_location": "France",
-    "search_sources": list(SEARCH_SOURCES),
+    # Plusieurs lieux séparés par « ; » : une recherche est lancée pour chacun.
+    "search_location": "; ".join(fle_filter.DEFAULT_LOCATIONS),
+    # HelloWork et Welcome to the Jungle ne publient presque que des offres en France :
+    # seule LinkedIn est interrogée par défaut pour l'étranger.
+    "search_sources": ["linkedin"],
     "search_recency": "week",
     "search_max_per_source": 60,
-    # Ne garder que les stages en intelligence artificielle (voir app/ai_filter.py).
-    "ai_only": True,
+    # Ne garder que les stages FLE (voir app/fle_filter.py).
+    "fle_only": True,
     # --- Automatisation ---
     "auto_enabled": False,          # relancer la recherche enregistrée à intervalle régulier
     "auto_interval_hours": 6,

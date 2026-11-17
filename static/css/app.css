@@ -40,6 +40,7 @@
   --src-linkedin: #0a66c2;    --src-linkedin-bg: #e8f1fb;
   --src-wttj: #6b5200;        --src-wttj-bg: #fff4bf;
   --src-manual: #5f6368;      --src-manual-bg: #f1f3f4;
+  --src-directory: #0b6e4f;   --src-directory-bg: #e3f4ec;
 
   /* Graphiques (palette catégorielle validée : daltonisme, contraste) */
   --series-1: #2a78d6;
@@ -88,6 +89,7 @@
     --src-linkedin: #8cc2ff;    --src-linkedin-bg: #13283f;
     --src-wttj: #f5d65b;        --src-wttj-bg: #3a3112;
     --src-manual: #c4c7c5;      --src-manual-bg: #2d2f31;
+    --src-directory: #7fd8b0;   --src-directory-bg: #15342a;
     --series-1: #3987e5;
     --series-2: #d95926;
     --chart-grid: #2c2c2a;
@@ -297,10 +299,12 @@ body.sidebar-collapsed .nav a { padding: 0; justify-content: center; border-radi
 .src.src-linkedin { color: var(--src-linkedin); background: var(--src-linkedin-bg); }
 .src.src-wttj { color: var(--src-wttj); background: var(--src-wttj-bg); }
 .src.src-manual { color: var(--src-manual); background: var(--src-manual-bg); }
+.src.src-directory { color: var(--src-directory); background: var(--src-directory-bg); }
 .src-dot { display: inline-block; width: 10px; height: 10px; flex: none; border-radius: 3px; background: var(--src-manual); }
 .src-dot.src-hellowork { background: var(--src-hellowork); }
 .src-dot.src-linkedin { background: var(--src-linkedin); }
 .src-dot.src-wttj { background: var(--src-wttj); }
+.src-dot.src-directory { background: var(--src-directory); }
 
 .chip { flex: none; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap; }
 .status-chip-sent { background: var(--st-sent-bg); color: var(--st-sent-fg); }
@@ -387,6 +391,20 @@ body.sidebar-collapsed .auto-indicator { justify-content: center; padding: 0; }
 .chart-key.src-fill-hellowork, .hbar-fill.src-fill-hellowork { background: var(--src-hellowork); }
 .chart-key.src-fill-linkedin, .hbar-fill.src-fill-linkedin { background: var(--src-linkedin); }
 .chart-key.src-fill-wttj, .hbar-fill.src-fill-wttj { background: var(--src-wttj); }
+.chart-key.src-fill-directory, .hbar-fill.src-fill-directory { background: var(--src-directory); }
+
+/* Annuaire des établissements FLE */
+.directory-list { margin-top: 10px; max-height: min(52vh, 480px); overflow-y: auto; border: 1px solid var(--border, #dadce0); border-radius: 8px; }
+.directory-group { margin: 0; padding: 8px 12px 4px; font-size: 13px; font-weight: 600; position: sticky; top: 0; background: var(--surface, #fff); border-bottom: 1px solid var(--border, #dadce0); }
+.directory-item { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; padding: 8px 12px; border-bottom: 1px solid var(--border, #dadce0); }
+.directory-item:last-child { border-bottom: 0; }
+.directory-item input { margin-top: 3px; grid-row: span 3; }
+.directory-name { font-weight: 500; overflow-wrap: anywhere; }
+.directory-meta, .directory-notes { font-size: 13px; color: var(--muted, #5f6368); overflow-wrap: anywhere; }
+.directory-meta a { color: inherit; }
+.directory-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; font-size: 12px; font-weight: 400; background: var(--src-directory-bg); color: var(--src-directory); }
+.directory-tag.warn { background: transparent; color: var(--muted, #5f6368); border: 1px dashed currentColor; }
+#directory-dialog .dialog-actions { align-items: center; }
 .chart-key.src-fill-manual, .hbar-fill.src-fill-manual { background: var(--src-manual); }
 
 .hbars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }

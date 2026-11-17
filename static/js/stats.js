@@ -230,14 +230,14 @@ export async function renderStats(sourceLabel) {
     box.replaceChildren(el("p", { class: "error-text", text: error.message }));
     return;
   }
-  const scope = stats.ai_only ? "Stages en IA uniquement" : "Toutes les offres";
+  const scope = stats.fle_only ? "Stages FLE uniquement" : "Toutes les offres";
   const statusRows = STATUSES.map((s) => ({
     label: s.label, value: stats.by_status[s.id] || 0, key: `st-${s.id}`, dot: true, href: `#status/${s.id}`,
   }));
   const sourceRows = Object.entries(stats.by_source).map(([source, value]) => ({
     label: sourceLabel(source) || SOURCE_SHORT[source] || source,
     value,
-    key: `src-fill-${["hellowork", "linkedin", "wttj"].includes(source) ? source : "manual"}`,
+    key: `src-fill-${["hellowork", "linkedin", "wttj", "directory"].includes(source) ? source : "manual"}`,
     dot: true,
     href: `#source/${source}`,
   }));
@@ -268,7 +268,7 @@ export async function renderStats(sourceLabel) {
       card("Activité des 12 dernières semaines", "Offres ajoutées et premières candidatures, par semaine", weeklyChart(stats.weekly)),
       card("Parcours des candidatures", "De l'offre repérée à l'entretien", funnel(stats)),
       card("Statut des offres", "Cliquez sur un statut pour voir les offres", hbars(statusRows)),
-      card("Thèmes IA", "Une offre peut couvrir plusieurs thèmes", hbars(topicRows, { emptyText: "Aucune offre en IA pour l'instant." })),
+      card("Thèmes FLE", "Une offre peut couvrir plusieurs thèmes", hbars(topicRows, { emptyText: "Aucune offre FLE pour l'instant." })),
       card("Sources", null, hbars(sourceRows)),
       card("Entreprises les plus présentes", null, companies),
     ]),

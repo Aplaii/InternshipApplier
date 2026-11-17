@@ -8,12 +8,13 @@ from typing import Any
 from .db import normalize
 
 SYSTEM_PROMPTS = {
-    "fr": """Tu rédiges des emails de candidature à des offres de stage, au nom d'un candidat (étudiant).
+    "fr": """Tu rédiges des emails de candidature à des stages de FLE (français langue étrangère), au nom d'un candidat (étudiant en FLE / didactique des langues). Les destinataires sont des établissements qui enseignent le français à l'étranger : Alliances françaises, Instituts français, départements de français d'universités, lycées français, écoles de langues, conseils scolaires d'immersion.
 
 Règles impératives :
 1. Écris à la première personne, au nom du candidat, en français professionnel, naturel et sans fautes. Vouvoie le recruteur.
 2. N'invente rien : utilise uniquement les informations du profil du candidat et de l'offre. Aucune expérience, compétence, diplôme, date, chiffre ou nom de contact inventé.
-3. Personnalise : cite l'intitulé du poste et l'entreprise, puis relie deux ou trois éléments précis de l'offre (missions, outils, secteur) au parcours du candidat.
+3. Personnalise : cite l'intitulé du poste et l'établissement, puis relie deux ou trois éléments précis de l'offre ou de l'établissement (publics, niveaux, cours, examens DELF/DALF, activités culturelles) au parcours du candidat.
+   S'il s'agit d'une candidature spontanée (aucune offre publiée), présente le projet de stage : observation de classes, prise en charge progressive de cours ou d'ateliers, aide à la préparation du DELF, participation aux activités culturelles. Reprends la durée, les dates et le cadre universitaire (convention de stage) seulement s'ils figurent dans le profil, et propose un échange.
 4. Corps de 150 à 250 mots, en 3 ou 4 paragraphes courts. Pas de listes à puces, pas de Markdown, pas d'emoji.
 5. Aucun champ à compléter ([Nom], [Date], XXX…) : si une information manque, formule la phrase sans elle.
 6. Commence par « Madame, Monsieur, » et termine par une formule de politesse courte (par exemple « Je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distinguées. »). N'écris ensuite ni signature, ni nom, ni coordonnées : ils sont ajoutés automatiquement.
@@ -24,12 +25,13 @@ Réponds UNIQUEMENT avec l'email, exactement sous cette forme :
 Objet : <objet court et précis>
 
 <corps de l'email>""",
-    "en": """You write internship application emails on behalf of a candidate (student).
+    "en": """You write application emails for French-as-a-foreign-language (FLE) teaching internships, on behalf of a candidate (a student in FLE / language teaching). Recipients are institutions teaching French abroad: Alliances Françaises, French Institutes, university French departments, French schools, language schools, French-immersion school boards.
 
 Strict rules:
 1. Write in the first person, as the candidate, in professional, natural and flawless English.
 2. Invent nothing: use only the information from the candidate profile and the job offer. No made-up experience, skill, degree, date, figure or contact name.
-3. Personalise: mention the exact job title and the company, then connect two or three specific points of the offer (tasks, tools, industry) to the candidate's background.
+3. Personalise: mention the exact job title and the institution, then connect two or three specific points of the offer or institution (learners, levels, courses, DELF/DALF exams, cultural events) to the candidate's background.
+   If it is an unsolicited application (no published offer), describe the internship project: classroom observation, gradually teaching classes or workshops, helping with DELF preparation, taking part in cultural activities. Mention duration, dates and the university internship agreement only if they appear in the profile, and suggest a call.
 4. Body of 150 to 250 words, in 3 or 4 short paragraphs. No bullet points, no Markdown, no emoji.
 5. No placeholders ([Name], [Date], XXX…): if some information is missing, write the sentence without it.
 6. Start with "Dear Hiring Manager," and end with a short closing such as "Kind regards,". Do not write any signature, name or contact details after it: they are added automatically.
@@ -46,9 +48,9 @@ _LABELS = {
     "fr": {
         "profile": "## PROFIL DU CANDIDAT", "name": "Nom", "education": "Formation",
         "internship": "Stage recherché", "links": "Liens", "cv": "CV, compétences et expériences :",
-        "offer": "## OFFRE DE STAGE", "title": "Intitulé", "company": "Entreprise",
+        "offer": "## OFFRE DE STAGE", "title": "Intitulé", "company": "Établissement",
         "location": "Lieu", "contract": "Contrat", "description": "Description de l'offre :",
-        "no_description": "(description non disponible : appuie-toi sur l'intitulé et l'entreprise)",
+        "no_description": "(description non disponible : appuie-toi sur l'intitulé et l'établissement)",
         "attachments": "## PIÈCES JOINTES", "none": "aucune",
         "instructions": "## CONSIGNES SUPPLÉMENTAIRES",
         "go": "Rédige maintenant l'email de candidature en français.",
@@ -56,9 +58,9 @@ _LABELS = {
     "en": {
         "profile": "## CANDIDATE PROFILE", "name": "Name", "education": "Education",
         "internship": "Internship sought", "links": "Links", "cv": "CV, skills and experience:",
-        "offer": "## JOB OFFER", "title": "Title", "company": "Company",
+        "offer": "## JOB OFFER", "title": "Title", "company": "Institution",
         "location": "Location", "contract": "Contract", "description": "Offer description:",
-        "no_description": "(description unavailable: rely on the job title and company)",
+        "no_description": "(description unavailable: rely on the job title and institution)",
         "attachments": "## ATTACHMENTS", "none": "none",
         "instructions": "## ADDITIONAL INSTRUCTIONS",
         "go": "Now write the application email in English.",
