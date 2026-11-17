@@ -68,7 +68,8 @@ DEFAULT_SETTINGS: dict[str, object] = {
     # HelloWork et Welcome to the Jungle ne publient que des offres en France : pour un lieu
     # étranger, ils cherchent dans toute la France (voir fle_filter.locations_for).
     "search_sources": list(SEARCH_SOURCES),
-    "search_recency": "week",
+    # Les stages FLE sont rares et publiés longtemps à l'avance : 30 jours par défaut.
+    "search_recency": "month",
     "search_max_per_source": 60,
     # Ne garder que les stages FLE (voir app/fle_filter.py).
     "fle_only": True,

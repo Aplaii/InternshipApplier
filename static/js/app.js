@@ -648,12 +648,18 @@ export async function runSearch(params) {
   try {
     const result = await api("/api/fetch", { method: "POST", json: params });
     await loadSettings();
-    const kept = (r) => (result.fle_only ? `, dont ${r.kept} en FLE` : "");
+    const kept = (r) => (result.fle_only ? `, dont ${r.kept} stage${r.kept > 1 ? "s" : ""} FLE` : "");
     const lines = result.results.map((r) => (r.error
       ? { text: `${r.label} : ${r.error}${r.found ? ` (${r.found} offres récupérées avant l'erreur${kept(r)}, ${r.new} nouvelles)` : ""}`, error: true }
       : { text: `${r.label} : ${r.found} offre${r.found > 1 ? "s" : ""} trouvée${r.found > 1 ? "s" : ""}${kept(r)}, ${r.new} nouvelle${r.new > 1 ? "s" : ""}` }));
     if (result.filtered_total) {
-      lines.push({ text: `${result.filtered_total} offre${result.filtered_total > 1 ? "s" : ""} hors FLE écartée${result.filtered_total > 1 ? "s" : ""}.` });
+      lines.push({ text: `${result.filtered_total} offre${result.filtered_total > 1 ? "s" : ""} écartée${result.filtered_total > 1 ? "s" : ""} (offres d'emploi ou hors FLE).` });
+    }
+    if (!result.new_total && ["day", "3days", "week"].includes(params.recency)) {
+      lines.push({ text: "Les stages FLE sont rares et publiés longtemps à l'avance : élargissez « Publiées depuis » à 30 jours ou à toutes dates, et pensez à l'annuaire des établissements FLE pour les candidatures spontanées." });
+    }
+    if (params.sources.some((s) => s === "hellowork" || s === "wttj")) {
+      lines.push({ text: "HelloWork et Welcome to the Jungle ne couvrent que la France (Indeed et JobTeaser bloquent les programmes automatiques : ajoutez leurs offres par lien)." });
     }
     if (result.details) lines.push({ text: `Description lue pour ${result.details} nouvelle${result.details > 1 ? "s" : ""} offre${result.details > 1 ? "s" : ""}.` });
     const failed = result.results.some((r) => r.error);
