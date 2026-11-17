@@ -131,7 +131,10 @@ export function statusInfo(id) {
   return STATUSES.find((s) => s.id === id) || STATUSES[0];
 }
 
-export const SOURCE_SHORT = { hellowork: "HelloWork", linkedin: "LinkedIn", wttj: "WTTJ", directory: "Annuaire" };
+export const SOURCE_SHORT = {
+  hellowork: "HelloWork", linkedin: "LinkedIn", wttj: "WTTJ", directory: "Annuaire",
+  eures: "EURES", jobtech: "Platsbanken", nav: "NAV", jobbank: "Job Bank",
+};
 
 export function sourceBadge(offer) {
   const label = SOURCE_SHORT[offer.source] || offer.source_label || "Manuel";

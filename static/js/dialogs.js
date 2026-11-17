@@ -9,9 +9,13 @@ let ctx = { onSearch: () => {}, onChange: () => {}, onOpenOffer: () => {} };
 let settings = null;
 
 const SEARCH_SOURCES = [
-  { id: "hellowork", label: "HelloWork" },
-  { id: "linkedin", label: "LinkedIn" },
-  { id: "wttj", label: "Welcome to the Jungle" },
+  { id: "linkedin", label: "LinkedIn (monde)" },
+  { id: "eures", label: "EURES (UE + Norvège, Islande)" },
+  { id: "jobtech", label: "Platsbanken (Suède)" },
+  { id: "nav", label: "Arbeidsplassen (Norvège)" },
+  { id: "jobbank", label: "Job Bank (Canada)" },
+  { id: "hellowork", label: "HelloWork (France)" },
+  { id: "wttj", label: "Welcome to the Jungle (France)" },
 ];
 
 // Champs du formulaire de paramètres (hors recherche, gérée par l'autre dialogue).
@@ -488,6 +492,61 @@ function bindSettingsDialog() {
   });
 }
 
+// --------------------------------------------------------------------------- plateformes de stage
+
+let platforms = null;
+
+export async function openPlatformsDialog() {
+  const dialog = $("platforms-dialog");
+  $("platforms-list").replaceChildren(el("p", { class: "muted", style: "padding: 12px", text: "Chargement…" }));
+  dialog.showModal();
+  try {
+    platforms = await api("/api/platforms");
+  } catch (error) {
+    $("platforms-list").replaceChildren(el("p", { class: "error-text", style: "padding: 12px", text: error.message }));
+    return;
+  }
+  const countries = [...new Set(platforms.platforms.flatMap((p) => p.countries))];
+  $("platforms-country").replaceChildren(
+    el("option", { value: "", text: "Tous les pays" }),
+    ...countries.map((c) => el("option", { value: c, text: c })),
+  );
+  $("platforms-note").textContent = `Recensement du ${platforms.updated}. ${platforms.note || ""}`;
+  renderPlatforms();
+}
+
+function renderPlatforms() {
+  if (!platforms) return;
+  const country = $("platforms-country").value;
+  const shown = platforms.platforms.filter((p) => !country || p.countries.includes(country)
+    || p.countries.some((c) => ["Tous", "Europe", "Monde"].includes(c)));
+  const groups = [["Intégrées à l'application", shown.filter((p) => p.integrated)], ["À consulter sur leur site", shown.filter((p) => !p.integrated)]];
+  const nodes = [];
+  for (const [label, list] of groups) {
+    if (!list.length) continue;
+    nodes.push(el("h3", { class: "directory-group", text: label }));
+    for (const p of list) {
+      nodes.push(el("div", { class: "directory-item platform-item" }, [
+        el("div", { class: "directory-name" }, [
+          p.name,
+          el("span", { class: `directory-tag${p.integrated ? "" : " warn"}`, text: p.integrated ? "Intégrée" : "Lien" }),
+        ]),
+        el("div", { class: "directory-meta" }, [
+          [p.kind, p.countries.join(", ")].filter(Boolean).join(" · "), " · ",
+          el("a", { href: p.url, target: "_blank", rel: "noopener noreferrer", text: p.integrated ? "voir le site" : "chercher sur le site" }),
+        ]),
+        el("div", { class: "directory-notes", text: p.notes || "" }),
+      ]));
+    }
+  }
+  $("platforms-list").replaceChildren(...nodes);
+}
+
+function bindPlatformsDialog() {
+  closeOnCancel($("platforms-dialog"));
+  $("platforms-country").addEventListener("change", renderPlatforms);
+}
+
 // --------------------------------------------------------------------------- candidature spontanée
 
 export function openSpontaneousDialog() {
@@ -656,5 +715,6 @@ export function initDialogs(options) {
   bindAddDialog();
   bindDirectoryDialog();
   bindSpontaneousDialog();
+  bindPlatformsDialog();
   bindSettingsDialog();
 }

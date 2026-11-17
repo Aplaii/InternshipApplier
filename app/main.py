@@ -33,7 +33,7 @@ from .scrapers.base import clean, extract_emails
 log = logging.getLogger("internship_applier")
 
 Status = Literal["new", "sent", "answered", "refused", "interview"]
-SearchSource = Literal["hellowork", "linkedin", "wttj"]
+SearchSource = Literal["hellowork", "linkedin", "wttj", "eures", "jobtech", "nav", "jobbank"]
 Recency = Literal["day", "3days", "week", "month", "all"]
 Folder = Literal["inbox", "unread", "starred", "spontaneous", "archived", "all"]
 
@@ -486,6 +486,10 @@ def create_app() -> FastAPI:
         return {**result, "remaining": await run_in_threadpool(remaining)}
 
     # ------------------------------------------------------------------- annuaire FLE
+
+    @app.get("/api/platforms")
+    def list_platforms() -> dict[str, Any]:
+        return institutions.platforms()
 
     @app.get("/api/institutions")
     def list_institutions() -> dict[str, Any]:

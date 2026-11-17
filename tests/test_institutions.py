@@ -73,7 +73,7 @@ def test_search_runs_once_per_location_and_query(client, monkeypatch, no_sleep):
     assert seen == [("Sweden", "FLE", 30), ("Canada", "FLE", 30)]
     assert result["new_total"] == 2
     assert client.get("/api/settings").json()["search_location"] == "Sweden; Canada"
-    assert config.DEFAULT_SETTINGS["search_sources"] == ["hellowork", "linkedin", "wttj"]
+    assert config.DEFAULT_SETTINGS["search_sources"] == list(config.SEARCH_SOURCES)
 
     # Sans mot-clé : une seule requête LinkedIn par lieu.
     seen.clear()

@@ -45,6 +45,7 @@ class SourceOutcome:
     offers: list[ScrapedOffer] = field(default_factory=list)
     found: int = 0
     error: str | None = None
+    skipped: bool = False  # aucun des lieux demandés n'est couvert par la plateforme
 
 
 def queries_for(keywords: str, fle_only: bool, source: str | None = None) -> list[str]:
@@ -56,6 +57,8 @@ def queries_for(keywords: str, fle_only: bool, source: str | None = None) -> lis
         return [""]
     if source == "linkedin":
         return [fle_filter.LINKEDIN_QUERY]
+    if source in fle_filter.SOURCE_QUERIES:
+        return list(fle_filter.SOURCE_QUERIES[source])
     return list(fle_filter.DEFAULT_QUERIES)
 
 
@@ -95,6 +98,9 @@ class Automation:
         locations = fle_filter.locations_for(source, params.location)
         queries = queries_for(params.keywords, fle_only, source)
         combos = [(loc, q) for loc in locations for q in queries]
+        if not combos:  # la plateforme ne couvre aucun des lieux demandés
+            outcome.skipped = True
+            return outcome
         # « Offres max. par site » est réparti entre les recherches : sinon chaque lieu
         # parcourrait jusqu'à 6 pages et une recherche sur 9 pays durerait des minutes.
         per_search = max(10, -(-params.max_results // len(combos)))
@@ -119,7 +125,10 @@ class Automation:
         # Filtre FLE : thème FLE *et* stage (LinkedIn mélange stages et offres d'emploi).
         outcome.offers = [
             o for o in merged.values()
-            if not fle_only or (fle_filter.is_fle_offer(o.title) and fle_filter.is_internship(o.title, o.contract))
+            if not fle_only or (
+                fle_filter.is_fle_offer(o.title, o.description)
+                and fle_filter.is_internship(o.title, o.contract, o.description)
+            )
         ]
         return outcome
 
@@ -154,6 +163,7 @@ class Automation:
                         "kept": len(outcome.offers),
                         "new": new,
                         "error": outcome.error,
+                        "skipped": outcome.skipped,
                     })
             return results, [i for i in new_ids if i is not None]
 

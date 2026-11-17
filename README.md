@@ -111,12 +111,26 @@ Les stages FLE publiés sont rares : à l'étranger, la plupart s'obtiennent par
 
 ### Sites interrogés
 
-| Site | Couverture | Remarque |
+| Source | Pays | Accès |
 |---|---|---|
+| EURES (portail européen de l'emploi) | Suède, Norvège, Danemark, Finlande, Islande, pays baltes, Pays-Bas, Irlande | API JSON publique, une recherche pour tous les pays |
+| Platsbanken (Arbetsförmedlingen) | Suède | API ouverte JobTech |
+| Arbeidsplassen (NAV) | Norvège | recherche JSON publique |
+| Job Bank / Guichet-Emplois | Canada | page de résultats ; le site refuse parfois les connexions depuis l'Europe |
 | LinkedIn | monde | une requête « OR » par lieu, exigeant un mot de stage |
-| HelloWork | France | un lieu étranger est remplacé par « toute la France » |
-| Welcome to the Jungle | France | idem |
-| Indeed, JobTeaser | — | non pris en charge : ces sites bloquent les programmes automatiques (HTTP 403). Ajoutez leurs offres avec « Ajouter une offre par lien ». |
+| HelloWork, Welcome to the Jungle | France | un lieu étranger est remplacé par « toute la France » |
+
+Une plateforme nationale n'est interrogée que si son pays figure dans le lieu (le bandeau de
+résultat indique les plateformes non interrogées). Les offres EURES, Platsbanken et NAV arrivent
+avec leur description, ce qui affine aussitôt les filtres FLE et stage.
+
+Le bouton **Plateformes de stage par pays** liste aussi les plateformes recensées qui ne sont pas
+interrogées automatiquement (`app/data/platforms.json`), avec un lien de recherche pour chacune :
+FINN (NO), Jobindex, Work in Denmark, The Hub (DK), Duunitori, Työmarkkinatori (FI), Alfreð (IS),
+CV.ee, CV.lv, CVbankas (pays baltes), Magnet.me, Stagemarkt, Nationale Vacaturebank (NL), gradireland,
+IrishJobs (IE), TalentEgg, Jobboom (CA), Erasmus Intern, iAgora, Fondation des Alliances françaises,
+FLE.fr, Indeed, JobTeaser. Plusieurs bloquent les programmes automatiques (HTTP 403) : ajoutez leurs
+offres avec « Ajouter une offre par lien ».
 
 ## Recherche automatique
 

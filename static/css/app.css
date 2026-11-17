@@ -41,6 +41,10 @@
   --src-wttj: #6b5200;        --src-wttj-bg: #fff4bf;
   --src-manual: #5f6368;      --src-manual-bg: #f1f3f4;
   --src-directory: #0b6e4f;   --src-directory-bg: #e3f4ec;
+  --src-eures: #1d4ed8;       --src-eures-bg: #e6edfd;
+  --src-jobtech: #00539c;     --src-jobtech-bg: #e2eef8;
+  --src-nav: #a3141c;         --src-nav-bg: #fbe8e9;
+  --src-jobbank: #8a1538;     --src-jobbank-bg: #f8e6ec;
 
   /* Graphiques (palette catégorielle validée : daltonisme, contraste) */
   --series-1: #2a78d6;
@@ -90,6 +94,10 @@
     --src-wttj: #f5d65b;        --src-wttj-bg: #3a3112;
     --src-manual: #c4c7c5;      --src-manual-bg: #2d2f31;
     --src-directory: #7fd8b0;   --src-directory-bg: #15342a;
+    --src-eures: #9db8ff;       --src-eures-bg: #18233f;
+    --src-jobtech: #8ec3f2;     --src-jobtech-bg: #13283d;
+    --src-nav: #ffa3a8;         --src-nav-bg: #3d1719;
+    --src-jobbank: #f3a3bc;     --src-jobbank-bg: #3a1622;
     --series-1: #3987e5;
     --series-2: #d95926;
     --chart-grid: #2c2c2a;
@@ -300,11 +308,19 @@ body.sidebar-collapsed .nav a { padding: 0; justify-content: center; border-radi
 .src.src-wttj { color: var(--src-wttj); background: var(--src-wttj-bg); }
 .src.src-manual { color: var(--src-manual); background: var(--src-manual-bg); }
 .src.src-directory { color: var(--src-directory); background: var(--src-directory-bg); }
+.src.src-eures { color: var(--src-eures); background: var(--src-eures-bg); }
+.src.src-jobtech { color: var(--src-jobtech); background: var(--src-jobtech-bg); }
+.src.src-nav { color: var(--src-nav); background: var(--src-nav-bg); }
+.src.src-jobbank { color: var(--src-jobbank); background: var(--src-jobbank-bg); }
 .src-dot { display: inline-block; width: 10px; height: 10px; flex: none; border-radius: 3px; background: var(--src-manual); }
 .src-dot.src-hellowork { background: var(--src-hellowork); }
 .src-dot.src-linkedin { background: var(--src-linkedin); }
 .src-dot.src-wttj { background: var(--src-wttj); }
 .src-dot.src-directory { background: var(--src-directory); }
+.src-dot.src-eures { background: var(--src-eures); }
+.src-dot.src-jobtech { background: var(--src-jobtech); }
+.src-dot.src-nav { background: var(--src-nav); }
+.src-dot.src-jobbank { background: var(--src-jobbank); }
 
 .chip { flex: none; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap; }
 .status-chip-sent { background: var(--st-sent-bg); color: var(--st-sent-fg); }
@@ -397,6 +413,11 @@ body.sidebar-collapsed .auto-indicator { justify-content: center; padding: 0; }
 .chart-key.src-fill-linkedin, .hbar-fill.src-fill-linkedin { background: var(--src-linkedin); }
 .chart-key.src-fill-wttj, .hbar-fill.src-fill-wttj { background: var(--src-wttj); }
 .chart-key.src-fill-directory, .hbar-fill.src-fill-directory { background: var(--src-directory); }
+.chart-key.src-fill-eures, .hbar-fill.src-fill-eures { background: var(--src-eures); }
+.chart-key.src-fill-jobtech, .hbar-fill.src-fill-jobtech { background: var(--src-jobtech); }
+.chart-key.src-fill-nav, .hbar-fill.src-fill-nav { background: var(--src-nav); }
+.chart-key.src-fill-jobbank, .hbar-fill.src-fill-jobbank { background: var(--src-jobbank); }
+.platform-item { grid-template-columns: 1fr; }
 
 /* Annuaire des établissements FLE */
 .directory-list { margin-top: 10px; max-height: min(52vh, 480px); overflow-y: auto; border: 1px solid var(--border, #dadce0); border-radius: 8px; }

@@ -48,6 +48,7 @@
       <h2 class="nav-title">Sources</h2>
       <ul class="nav" id="nav-source"></ul>
       <button id="spontaneous-btn" class="nav-link-btn" type="button"><span data-icon="contact_mail"></span>Nouvelle candidature spontanée</button>
+      <button id="platforms-btn" class="nav-link-btn" type="button"><span data-icon="travel_explore"></span>Plateformes de stage par pays</button>
       <button id="directory-btn" class="nav-link-btn" type="button"><span data-icon="school"></span>Annuaire des établissements FLE</button>
       <button id="add-offer-btn" class="nav-link-btn" type="button"><span data-icon="add_link"></span>Ajouter une offre par lien</button>
     </nav>
@@ -182,6 +183,22 @@
         <div class="spacer"></div>
         <button type="button" class="btn" data-close>Fermer</button>
         <button type="submit" class="btn primary" id="directory-import">Importer la sélection</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Plateformes de stage -->
+  <dialog id="platforms-dialog" class="dialog wide">
+    <form method="dialog">
+      <h2>Plateformes de stage par pays</h2>
+      <p class="muted">Les plateformes « Intégrée » sont interrogées par « Chercher des offres » (à cocher dans la fenêtre de recherche). Pour les autres, ouvrez la recherche sur leur site ; une offre intéressante s'ajoute avec « Ajouter une offre par lien ».</p>
+      <div class="field-row">
+        <label class="field"><span>Pays</span><select id="platforms-country"><option value="">Tous les pays</option></select></label>
+      </div>
+      <div id="platforms-list" class="directory-list"></div>
+      <p id="platforms-note" class="muted small-text"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Fermer</button>
       </div>
     </form>
   </dialog>

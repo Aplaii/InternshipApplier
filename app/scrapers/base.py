@@ -37,6 +37,9 @@ class ScrapedOffer:
     contract: str = ""
     logo_url: str = ""
     published_at: str | None = None  # ISO 8601 UTC, ex. 2026-10-01T08:38:39Z
+    # Texte de l'annonce quand la recherche le fournit déjà (API EURES, Platsbanken, NAV) :
+    # il est enregistré tel quel, sans lecture supplémentaire de la page.
+    description: str = ""
 
 
 @dataclass

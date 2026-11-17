@@ -8,7 +8,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-from . import hellowork, linkedin, wttj
+from . import eures, hellowork, jobbank, jobtech, linkedin, nav, wttj
 from .base import (
     OfferDetails, ScrapedOffer, SearchParams, SourceError, fetch_generic_details, make_client,
 )
@@ -22,6 +22,10 @@ SEARCHERS: dict[str, Callable[[httpx.AsyncClient, SearchParams], Awaitable[list[
     "hellowork": hellowork.search,
     "linkedin": linkedin.search,
     "wttj": wttj.search,
+    "eures": eures.search,
+    "jobtech": jobtech.search,
+    "nav": nav.search,
+    "jobbank": jobbank.search,
 }
 
 _HELLOWORK_ID = re.compile(r"hellowork\.com/[a-z]{2}-[a-z]{2}/emplois/(\d+)\.html")
@@ -74,4 +78,8 @@ async def fetch_details(
         return await linkedin.fetch_details(client, source_id)
     if source == "wttj":
         return await wttj.fetch_details(client, url)
+    if source == "eures":
+        return await eures.fetch_details(client, source_id)
+    if source == "jobtech":
+        return await jobtech.fetch_details(client, source_id)
     return await fetch_generic_details(client, url)

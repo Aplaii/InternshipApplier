@@ -41,6 +41,19 @@ def test_rejects_job_offers(title):
     assert not fle_filter.is_internship(title, "")
 
 
+@pytest.mark.parametrize("title, contract, expected", [
+    ("Praktik snickare", "Tillsvidareanställning (inkl. eventuell provanställning)", False),
+    ("Veterinär blandad praktik", "Vikariat · 12 månader", False),
+    ("Praktik inom franskundervisning", "", True),
+    ("Praktikant inom IT", "Contrat temporaire", True),
+    ("Winternship - Nordea Markets Research", "", True),
+    ("Fastlege i solopraksis", "Contrat", False),
+    ("Studentmedarbetare inom event", "Sur appel", False),
+])
+def test_internship_with_platform_contracts(title, contract, expected):
+    assert fle_filter.is_internship(title, contract) is expected
+
+
 def test_internship_from_description():
     assert fle_filter.is_internship("French Teacher", "", "Type d’emploi : Stage\nSecteurs : Enseignement")
     assert fle_filter.is_internship("Assistant pédagogique", "", "Stage de 6 mois, convention de stage obligatoire.")

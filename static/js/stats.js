@@ -237,7 +237,7 @@ export async function renderStats(sourceLabel) {
   const sourceRows = Object.entries(stats.by_source).map(([source, value]) => ({
     label: sourceLabel(source) || SOURCE_SHORT[source] || source,
     value,
-    key: `src-fill-${["hellowork", "linkedin", "wttj", "directory"].includes(source) ? source : "manual"}`,
+    key: `src-fill-${["hellowork", "linkedin", "wttj", "directory", "eures", "jobtech", "nav", "jobbank"].includes(source) ? source : "manual"}`,
     dot: true,
     href: `#source/${source}`,
   }));

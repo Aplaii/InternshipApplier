@@ -179,10 +179,19 @@ def looks_french(text: str | None) -> bool:
 # Un stage se reconnaît à son intitulé ou à son type de contrat, dans les langues des pays
 # visés. « stage » anglais (« early stage », « stage manager ») est écarté.
 _INTERNSHIP = re.compile(
-    r"\bstages?\b(?! manager| technician| hand)|\bstagiaires?\b|\binternships?\b|\bintern\b|"
-    r"\binterns\b|\btrainees?(ship)?\b|\bco-?op\b|\bpraktik(ant|anter|plats|platser)?\b|"
-    r"\bpraksis(plass|student)?\b|\bharjoittel(u|ija|ijat)\b|\bharjoitteluun\b|\bstagiair(e|s)?\b|"
-    r"\bpraktikum\b|\bwork placement\b|\bplacement (etudiant|student)\b"
+    r"\bstages?\b(?! manager| technician| hand)|\bstagiaires?\b|\b(w|s)?internships?\b|\bintern\b|"
+    r"\binterns\b|\btrainees?(ship)?\b|\bco-?op\b|\bpraktikant(er|en)?\b|\bpraktikplats(er)?\b|"
+    r"\bpraksisplass(er)?\b|\bpraksisstudent\b|\bharjoittel(u|ija|ijat)\b|\bharjoitteluun\b|"
+    r"\bstagiair(e|s)?\b|\bpraktikum\b|\bwork placement\b|\bplacement (etudiant|student)\b"
+)
+# « praktik » (suédois, danois) et « praksis » (norvégien) veulent aussi dire « cabinet » ou
+# « pratique » : indice faible, annulé par un contrat d'emploi.
+_WEAK_INTERNSHIP = re.compile(r"\bpraktik\b|\bpraksis\b")
+# Contrat d'emploi annoncé par la plateforme (Platsbanken, NAV, EURES…).
+_JOB_CONTRACT = re.compile(
+    r"tillsvidare|vanlig anstallning|provanstallning|\bvikariat\b|\bfast( stilling| anstallning)?\b|"
+    r"emploi permanent|\bremplacement\b|\bemploi\b(?! etudiant)|\bpermanent\b|\bcdi\b|\bcdd\b|"
+    r"full[- ]time|\bcontrat( temporaire| puis embauche)?\b|\bsaisonnier\b|\bsur appel\b"
 )
 _NOT_INTERNSHIP = re.compile(r"\b(early|late|growth|seed|multi|back|front|next)[- ]stages?\b")
 # Dans une description : type de contrat annoncé, ou convention de stage.
@@ -208,11 +217,14 @@ def _internship_words(text: str) -> int:
 
 def is_internship(title: str | None, contract: str | None = "", description: str | None = None) -> bool:
     """Vrai pour un stage, faux pour une offre d'emploi (CDI, CDD, poste d'enseignant…)."""
-    head = _fold(f"{title or ''} | {contract or ''}")
+    folded_title = _fold(title)
+    head = f"{folded_title} | {_fold(contract)}"
     if _internship_words(head):
         return True
-    if _JOB_TITLE.search(_fold(title)):
+    if _JOB_TITLE.search(folded_title) or _JOB_CONTRACT.search(_fold(contract)):
         return False
+    if _WEAK_INTERNSHIP.search(folded_title):
+        return True
     body = _fold(description)
     return bool(body) and (bool(_INTERNSHIP_BODY.search(body)) or _internship_words(body) >= 3)
 
@@ -242,9 +254,78 @@ def is_foreign_place(location: str) -> bool:
 
 
 def locations_for(source: str, value: str | None) -> list[str]:
-    """Lieux à interroger sur ``source`` (les sites français ignorent les lieux étrangers)."""
+    """Lieux à interroger sur ``source`` ([] = la plateforme ne couvre aucun lieu demandé).
+
+    Les sites français ignorent les lieux étrangers, EURES reçoit en une fois les codes
+    de tous les pays européens demandés, et les plateformes nationales ne sont
+    interrogées que si leur pays figure dans la liste (lieu vide = tous les pays).
+    """
     locations = split_locations(value)
+    anywhere = locations == [""]
+    if source == "eures":
+        codes = list(dict.fromkeys(c for loc in locations for c in country_codes(loc)))
+        if anywhere:
+            codes = list(NORDICS + ("ee", "lv", "lt", "nl", "ie"))
+        return [",".join(codes)] if codes else []
+    if source == "jobtech":
+        return ["Sverige"] if anywhere or any("se" in country_codes(loc) for loc in locations) else []
+    if source == "nav":
+        return ["Norge"] if anywhere or any("no" in country_codes(loc) for loc in locations) else []
+    if source == "jobbank":
+        return ["Canada"] if anywhere or any(is_canada(loc) for loc in locations) else []
     if source not in FRANCE_ONLY_SOURCES:
         return locations
     french = [loc for loc in locations if loc and not is_foreign_place(loc)]
     return french or ["France"]
+
+
+# --------------------------------------------------------------------------- plateformes nationales
+
+# Requêtes propres à chaque plateforme (filtre FLE actif, aucun mot-clé saisi). EURES
+# exige tous les mots d'une requête ; les autres font une recherche plein texte.
+SOURCE_QUERIES: dict[str, tuple[str, ...]] = {
+    "eures": (
+        "intern french", "internship french", "trainee french", "stagiaire français", "stage FLE",
+        "praktikant franska", "praktik franska", "praksis fransk", "praktikant fransk",
+        "stagiair frans", "harjoittelija ranska", "harjoittelu ranska",
+    ),
+    "jobtech": ("praktik franska", "praktikant franska", "praktik franskundervisning", "French intern"),
+    "nav": ("praksis fransk", "praktikant fransk", "trainee fransk", "French intern"),
+    "jobbank": ("stagiaire français", "stagiaire FLE", "french intern", "french tutor intern", "stagiaire enseignement"),
+}
+
+# Codes pays EURES (UE + EEE). Le Canada et le Royaume-Uni n'y sont pas.
+EURES_COUNTRIES = {
+    "se": ("sweden", "suede", "sverige", "stockholm", "goteborg", "gothenburg", "malmo", "uppsala", "lund"),
+    "no": ("norway", "norvege", "norge", "oslo", "bergen", "trondheim", "stavanger", "tromso"),
+    "dk": ("denmark", "danemark", "danmark", "copenhagen", "copenhague", "kobenhavn", "aarhus", "odense"),
+    "fi": ("finland", "finlande", "suomi", "helsinki", "tampere", "turku", "oulu", "jyvaskyla"),
+    "is": ("iceland", "islande", "island", "reykjavik"),
+    "ee": ("estonia", "estonie", "eesti", "tallinn", "tartu"),
+    "lv": ("latvia", "lettonie", "latvija", "riga"),
+    "lt": ("lithuania", "lituanie", "lietuva", "vilnius", "kaunas"),
+    "nl": ("netherlands", "pays-bas", "nederland", "holland", "amsterdam", "rotterdam", "utrecht", "la haye", "den haag", "the hague"),
+    "ie": ("ireland", "irlande", "eire", "dublin", "cork", "galway"),
+    "be": ("belgium", "belgique", "belgie", "bruxelles", "brussels", "anvers", "antwerpen", "gand", "gent"),
+    "de": ("germany", "allemagne", "deutschland", "berlin", "hambourg", "hamburg"),
+    "lu": ("luxembourg",),
+}
+NORDICS = ("se", "no", "dk", "fi", "is")
+_CANADA = ("canada", "quebec", "ontario", "montreal", "toronto", "vancouver", "ottawa", "calgary", "edmonton",
+           "winnipeg", "halifax", "moncton", "victoria", "colombie-britannique", "british columbia", "alberta",
+           "manitoba", "nouvelle-ecosse", "nova scotia", "nouveau-brunswick", "new brunswick")
+_GROUPS = {"nordics": NORDICS, "scandinavia": ("se", "no", "dk"), "scandinavie": ("se", "no", "dk"),
+           "pays nordiques": NORDICS, "baltics": ("ee", "lv", "lt"), "pays baltes": ("ee", "lv", "lt"),
+           "europe": tuple(EURES_COUNTRIES), "europe du nord": NORDICS + ("ee", "lv", "lt", "nl", "ie")}
+
+
+def country_codes(location: str) -> tuple[str, ...]:
+    """Codes pays EURES d'un lieu (« Sweden » -> ("se",), « Nordics » -> 5 codes)."""
+    first = _fold(location).split(",")[0].strip()
+    if first in _GROUPS:
+        return _GROUPS[first]
+    return tuple(code for code, names in EURES_COUNTRIES.items() if first in names)
+
+
+def is_canada(location: str) -> bool:
+    return any(part.strip() in _CANADA for part in _fold(location).split(","))

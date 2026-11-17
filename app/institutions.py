@@ -31,6 +31,16 @@ def load() -> dict[str, Any]:
         return json.load(fh)
 
 
+PLATFORMS_FILE = Path(__file__).resolve().parent / "data" / "platforms.json"
+
+
+@lru_cache(maxsize=1)
+def platforms() -> dict[str, Any]:
+    """Plateformes de stage recensées (``app/data/platforms.json``)."""
+    with PLATFORMS_FILE.open(encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 def items() -> list[dict[str, Any]]:
     return list(load()["institutions"])
 

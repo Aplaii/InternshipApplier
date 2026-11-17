@@ -21,11 +21,15 @@ STATUSES = ("new", "sent", "answered", "refused", "interview")
 
 # Sources interrogées automatiquement. "manual" = offre ajoutée à la main,
 # "directory" = établissement importé depuis l'annuaire FLE.
-SEARCH_SOURCES = ("hellowork", "linkedin", "wttj")
+SEARCH_SOURCES = ("hellowork", "linkedin", "wttj", "eures", "jobtech", "nav", "jobbank")
 SOURCE_LABELS = {
     "hellowork": "HelloWork",
     "linkedin": "LinkedIn",
     "wttj": "Welcome to the Jungle",
+    "eures": "EURES (Europe)",
+    "jobtech": "Platsbanken (Suède)",
+    "nav": "Arbeidsplassen (Norvège)",
+    "jobbank": "Job Bank (Canada)",
     "directory": "Annuaire FLE",  # établissements de app/data/institutions.json
     "manual": "Manuel",
 }

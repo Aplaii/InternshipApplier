@@ -174,7 +174,7 @@ def test_fetch_keeps_only_fle_offers(client, monkeypatch):
     result = client.post("/api/fetch", json=payload).json()
     # Sans mot-clé, plusieurs requêtes couvrent le domaine du FLE (et les doublons sont fusionnés).
     assert [kw for _, kw in seen] == list(fle_filter.DEFAULT_QUERIES)
-    assert result["results"][0] == {"source": "hellowork", "label": "HelloWork", "found": 2, "kept": 1, "new": 1, "error": None}
+    assert result["results"][0] == {"source": "hellowork", "label": "HelloWork", "found": 2, "kept": 1, "new": 1, "error": None, "skipped": False}
     assert result["filtered_total"] == 1 and result["fle_only"] is True
     assert [o["title"] for o in client.get("/api/offers").json()["items"]] == ["Stage FLE"]
 

@@ -140,7 +140,7 @@ def test_settings_roundtrip(data_dir):
         settings = db.load_settings(conn)
     assert settings["full_name"] == "Clément" and settings["search_sources"] == ["wttj"]
     assert "inconnu" not in settings
-    assert config.DEFAULT_SETTINGS["search_sources"] == ["hellowork", "linkedin", "wttj"]  # non modifié
+    assert config.DEFAULT_SETTINGS["search_sources"] == list(config.SEARCH_SOURCES)  # non modifié
 
 
 def test_normalize():

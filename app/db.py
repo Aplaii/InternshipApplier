@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from . import fle_filter, config
+from .scrapers.base import extract_emails
 
 SCHEMA_VERSION = 5
 
@@ -240,15 +241,19 @@ def upsert_offers(conn: sqlite3.Connection, offers: Iterable[Any]) -> int:
             (offer.source, offer.source_id),
         ).fetchone()
         if row is None:
+            description = (getattr(offer, "description", "") or "").strip() or None
+            emails = json.dumps(extract_emails(description)) if description else "[]"
             conn.execute(
                 """INSERT INTO offers (source, source_id, url, title, company, location, contract,
                                        logo_url, published_at, first_seen_at, last_seen_at, fle_topics,
-                                       title_fr, is_internship)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                       title_fr, is_internship, description, details_fetched_at,
+                                       contact_emails)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (offer.source, offer.source_id, offer.url, offer.title, offer.company,
                  offer.location, offer.contract, offer.logo_url, offer.published_at, now, now,
-                 _topics_value(offer.title, None), _french_title(offer.title),
-                 _internship_value(offer.title, offer.contract, None)),
+                 _topics_value(offer.title, description), _french_title(offer.title),
+                 _internship_value(offer.title, offer.contract, description),
+                 description, now if description else None, emails),
             )
             new_count += 1
         else:

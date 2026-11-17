@@ -8,7 +8,7 @@ import {
 import { initCompose, openCompose } from "./compose.js";
 import { initDrawer, openDrawer, refreshDrawer } from "./drawer.js";
 import {
-  initDialogs, openFindDialog, openSettings, openAddDialog, openDirectoryDialog, openSpontaneousDialog, getSettings, loadSettings, refreshAutomation,
+  initDialogs, openFindDialog, openSettings, openAddDialog, openDirectoryDialog, openSpontaneousDialog, openPlatformsDialog, getSettings, loadSettings, refreshAutomation,
 } from "./dialogs.js";
 import { renderStats } from "./stats.js";
 
@@ -601,6 +601,7 @@ function bindSidebar() {
   $("add-offer-btn").addEventListener("click", () => openAddDialog());
   $("directory-btn").addEventListener("click", () => openDirectoryDialog());
   $("spontaneous-btn").addEventListener("click", () => openSpontaneousDialog());
+  $("platforms-btn").addEventListener("click", () => openPlatformsDialog());
   $("translate-btn").addEventListener("click", translateTitles);
   $("settings-btn").addEventListener("click", () => openSettings());
   window.addEventListener("hashchange", () => {
@@ -649,7 +650,7 @@ export async function runSearch(params) {
     const result = await api("/api/fetch", { method: "POST", json: params });
     await loadSettings();
     const kept = (r) => (result.fle_only ? `, dont ${r.kept} stage${r.kept > 1 ? "s" : ""} FLE` : "");
-    const lines = result.results.map((r) => (r.error
+    const lines = result.results.filter((r) => !r.skipped).map((r) => (r.error
       ? { text: `${r.label} : ${r.error}${r.found ? ` (${r.found} offres récupérées avant l'erreur${kept(r)}, ${r.new} nouvelles)` : ""}`, error: true }
       : { text: `${r.label} : ${r.found} offre${r.found > 1 ? "s" : ""} trouvée${r.found > 1 ? "s" : ""}${kept(r)}, ${r.new} nouvelle${r.new > 1 ? "s" : ""}` }));
     if (result.filtered_total) {
@@ -658,6 +659,8 @@ export async function runSearch(params) {
     if (!result.new_total && ["day", "3days", "week"].includes(params.recency)) {
       lines.push({ text: "Les stages FLE sont rares et publiés longtemps à l'avance : élargissez « Publiées depuis » à 30 jours ou à toutes dates, et pensez à l'annuaire des établissements FLE pour les candidatures spontanées." });
     }
+    const skipped = result.results.filter((r) => r.skipped).map((r) => r.label);
+    if (skipped.length) lines.push({ text: `Non interrogées (aucun lieu couvert) : ${skipped.join(", ")}.` });
     if (params.sources.some((s) => s === "hellowork" || s === "wttj")) {
       lines.push({ text: "HelloWork et Welcome to the Jungle ne couvrent que la France (Indeed et JobTeaser bloquent les programmes automatiques : ajoutez leurs offres par lien)." });
     }
