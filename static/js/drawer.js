@@ -116,7 +116,18 @@ function descriptionBlock(offer) {
         el("strong", { text: offer.contact_emails.join(", ") }),
       ]));
     }
-    if (offer.description) {
+    if (offer.description && offer.description_fr && offer.description_fr !== offer.description) {
+      const showOriginal = box.dataset.original === "1";
+      parts.push(el("div", { class: "desc-text", text: showOriginal ? offer.description : offer.description_fr }));
+      parts.push(el("p", { class: "muted small-text" }, [
+        showOriginal ? "Texte original. " : "Traduction automatique (modèle local). ",
+        el("button", {
+          type: "button", class: "link-btn",
+          text: showOriginal ? "Voir la traduction" : "Voir l'original",
+          onclick: () => { box.dataset.original = showOriginal ? "0" : "1"; render(); },
+        }),
+      ]));
+    } else if (offer.description) {
       parts.push(el("div", { class: "desc-text", text: offer.description }));
     } else if (offer.details_fetched_at) {
       parts.push(el("p", { class: "muted", text: "Description vide." }));
@@ -126,6 +137,9 @@ function descriptionBlock(offer) {
     parts.push(el("div", { class: "row-buttons" }, [
       el("button", { type: "button", class: "btn small", text: offer.details_fetched_at ? "Actualiser depuis le site" : "Charger depuis le site", onclick: () => fetchDescription(true) }),
       el("button", { type: "button", class: "btn small", text: "Modifier à la main", onclick: editManually }),
+      needsTranslation(offer)
+        ? el("button", { type: "button", class: "btn small tonal", onclick: translateOffer }, [icon("translate"), "Traduire en français"])
+        : null,
     ]));
     box.replaceChildren(...parts);
   };
@@ -134,6 +148,20 @@ function descriptionBlock(offer) {
     try {
       const updated = await requestDetails(offer.id, refresh);
       Object.assign(offer, updated);
+    } catch (error) {
+      render();
+      box.prepend(el("p", { class: "error-text", text: error.message }));
+      return;
+    }
+    render();
+  };
+  const translateOffer = async () => {
+    box.replaceChildren(el("p", { class: "muted" }, [el("span", { class: "spinner small" }), " Traduction en cours (modèle local)…"]));
+    try {
+      const updated = await api(`/api/offers/${offer.id}/translate`, { method: "POST" });
+      Object.assign(offer, updated);
+      box.dataset.original = "0";
+      ctx.onTranslated?.(offer);
     } catch (error) {
       render();
       box.prepend(el("p", { class: "error-text", text: error.message }));
@@ -174,6 +202,21 @@ function descriptionBlock(offer) {
   return box;
 }
 
+function needsTranslation(offer) {
+  return !offer.title_fr || Boolean(offer.description && !offer.description_fr);
+}
+
+function spontaneousToggle(offer) {
+  const box = el("input", { type: "checkbox" });
+  box.checked = Boolean(offer.is_spontaneous);
+  box.addEventListener("change", () => ctx.updateOffers([offer.id], { is_spontaneous: box.checked }, {
+    message: box.checked ? "Suivie comme candidature spontanée" : "Suivie comme réponse à une offre",
+  }));
+  return el("label", { class: "check spontaneous-toggle", title: "Candidature envoyée sans offre publiée (dossier « Candidatures spontanées »)" }, [
+    box, " Candidature spontanée",
+  ]);
+}
+
 function render(offer) {
   currentOffer = offer;
   const badge = $("drawer-source");
@@ -186,7 +229,10 @@ function render(offer) {
   dates.push(`ajoutée le ${longDate(offer.first_seen_at)}`);
 
   $("drawer-body").replaceChildren(
-    el("h2", { class: "drawer-title", text: offer.title }),
+    el("h2", { class: "drawer-title", text: offer.title_fr || offer.title }),
+    offer.title_fr && offer.title_fr !== offer.title
+      ? el("div", { class: "muted small-text", text: `Titre original : ${offer.title}` })
+      : null,
     el("div", { class: "drawer-company", text: offer.company || "Entreprise non précisée" }),
     el("div", { class: "muted", text: [offer.location, offer.contract].filter(Boolean).join(" · ") }),
     el("div", { class: "muted small-text", text: dates.join(", ") }),
@@ -213,7 +259,13 @@ function render(offer) {
         }),
       }, icon(offer.is_archived ? "unarchive" : "archive")),
     ]),
-    section("Suivi de la candidature", statusPicker(offer)),
+    section("Suivi de la candidature", el("div", {}, [
+      statusPicker(offer),
+      spontaneousToggle(offer),
+      offer.is_internship || offer.is_spontaneous || ["manual", "directory"].includes(offer.source)
+        ? null
+        : el("p", { class: "muted small-text", text: "Offre d'emploi (pas un stage) : elle reste visible car le filtre « stages FLE uniquement » est désactivé." }),
+    ])),
     section("Notes", notesBlock(offer)),
     section(`Emails envoyés${offer.emails?.length ? ` (${offer.emails.length})` : ""}`, emailsBlock(offer)),
     section("Description de l'offre", descriptionBlock(offer)),

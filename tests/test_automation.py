@@ -233,7 +233,7 @@ async def test_run_once_searches_reads_and_drafts(data_dir, monkeypatch, no_slee
     with MockLLM([("sse", sse_chunks(email))]) as mock:
         with db.get_conn() as conn:
             db.save_settings(conn, {
-                "search_sources": ["linkedin"], "auto_enabled": True, "auto_draft": True, "auto_draft_max": 1,
+                "search_sources": ["linkedin"], "auto_enabled": True, "auto_draft": True, "auto_draft_max": 1, "auto_translate": False,
                 "llm_base_url": mock.url, "full_name": "Clément Test",
             })
         auto = automation.Automation()
@@ -269,3 +269,32 @@ async def test_run_once_reports_llm_down(data_dir, monkeypatch, no_sleep):
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+def test_migration_to_version_5_clears_fake_linkedin_internships(tmp_path, monkeypatch):
+    old_schema = db.SCHEMA
+    for column in ("title_fr           TEXT,", "description_fr     TEXT,",
+                   "is_spontaneous     INTEGER NOT NULL DEFAULT 0,", "is_internship      INTEGER NOT NULL DEFAULT 0,"):
+        old_schema = old_schema.replace(f"    {column}\n", "")
+    assert "is_internship" not in old_schema
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "app.db")
+    monkeypatch.setattr(config, "DOCUMENTS_DIR", tmp_path / "documents")
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.executescript(old_schema)
+    rows = [("linkedin", "1", "Docent Frans", "Stage"), ("linkedin", "2", "French Teacher Intern", "Stage"),
+            ("hellowork", "3", "Animation atelier FLE", "Stage · 2 mois"), ("directory", "d", "Candidature spontanée – stage FLE", "")]
+    conn.executemany(
+        "INSERT INTO offers (source, source_id, url, title, contract, first_seen_at, last_seen_at) "
+        "VALUES (?, ?, 'https://x', ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')", rows)
+    conn.execute("PRAGMA user_version = 3")
+    conn.commit()
+    conn.close()
+    db.init_db()
+    with db.get_conn() as conn:
+        got = {r["source_id"]: dict(r) for r in conn.execute("SELECT * FROM offers")}
+    assert got["1"]["is_internship"] == 0 and got["1"]["contract"] == ""
+    assert got["2"]["is_internship"] == 1
+    assert got["3"]["is_internship"] == 1 and got["3"]["contract"] == "Stage · 2 mois"
+    assert got["d"]["is_spontaneous"] == 1
+    assert got["3"]["title_fr"] is None and got["1"]["title_fr"] is None

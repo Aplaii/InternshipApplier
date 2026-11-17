@@ -269,10 +269,26 @@ export async function renderStats(sourceLabel) {
       card("Parcours des candidatures", "De l'offre repérée à l'entretien", funnel(stats)),
       card("Statut des offres", "Cliquez sur un statut pour voir les offres", hbars(statusRows)),
       card("Thèmes FLE", "Une offre peut couvrir plusieurs thèmes", hbars(topicRows, { emptyText: "Aucune offre FLE pour l'instant." })),
+      card("Candidatures spontanées et offres", "Suivi séparé : envoyées, réponses, entretiens", kindTable(stats.by_kind)),
       card("Sources", null, hbars(sourceRows)),
       card("Entreprises les plus présentes", null, companies),
     ]),
   );
+}
+
+function kindTable(byKind) {
+  const rows = [["Candidatures spontanées", byKind.spontaneous, "#spontaneous"], ["Réponses à une offre", byKind.offers, "#all"]];
+  return el("table", { class: "companies" }, [
+    el("thead", {}, el("tr", {}, ["", "Suivies", "Envoyées", "Réponses", "Taux", "Entretiens"].map((t) => el("th", { text: t })))),
+    el("tbody", {}, rows.map(([label, k, href]) => el("tr", {}, [
+      el("td", {}, el("a", { href, text: label })),
+      el("td", { text: fmt.format(k.total) }),
+      el("td", { text: fmt.format(k.applied) }),
+      el("td", { text: fmt.format(k.replies) }),
+      el("td", { text: k.reply_rate === null ? "—" : pct.format(k.reply_rate) }),
+      el("td", { text: fmt.format(k.interviews) }),
+    ]))),
+  ]);
 }
 
 window.addEventListener("scroll", hideTip, true);

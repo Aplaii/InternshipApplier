@@ -34,6 +34,7 @@
       <ul class="nav" id="nav-main">
         <li><a href="#inbox" data-view="inbox"><span data-icon="inbox"></span><span class="nav-label">Boîte de réception</span><span class="nav-count" data-count="unread"></span></a></li>
         <li><a href="#starred" data-view="starred"><span data-icon="star"></span><span class="nav-label">Favoris</span><span class="nav-count" data-count="starred"></span></a></li>
+        <li><a href="#spontaneous" data-view="spontaneous"><span data-icon="contact_mail"></span><span class="nav-label">Candidatures spontanées</span><span class="nav-count" data-count="spontaneous"></span></a></li>
         <li><a href="#all" data-view="all"><span data-icon="list"></span><span class="nav-label">Toutes les offres</span><span class="nav-count" data-count="total"></span></a></li>
         <li><a href="#archived" data-view="archived"><span data-icon="archive"></span><span class="nav-label">Archivées</span><span class="nav-count" data-count="archived"></span></a></li>
         <li><a href="#stats" data-view="stats"><span data-icon="insights"></span><span class="nav-label">Tableau de bord</span></a></li>
@@ -46,6 +47,7 @@
       <ul class="nav" id="nav-status"></ul>
       <h2 class="nav-title">Sources</h2>
       <ul class="nav" id="nav-source"></ul>
+      <button id="spontaneous-btn" class="nav-link-btn" type="button"><span data-icon="contact_mail"></span>Nouvelle candidature spontanée</button>
       <button id="directory-btn" class="nav-link-btn" type="button"><span data-icon="school"></span>Annuaire des établissements FLE</button>
       <button id="add-offer-btn" class="nav-link-btn" type="button"><span data-icon="add_link"></span>Ajouter une offre par lien</button>
     </nav>
@@ -57,6 +59,7 @@
           <input id="select-all" type="checkbox" aria-label="Tout sélectionner">
         </label>
         <button id="refresh-btn" class="icon-btn" type="button" title="Relancer la dernière recherche" aria-label="Relancer la dernière recherche" data-icon="refresh"></button>
+        <button id="translate-btn" class="btn small tonal" type="button" hidden title="Traduire en français les titres des offres (modèle local llama.cpp)"><span data-icon="translate"></span><span id="translate-label">Traduire les titres</span></button>
         <div id="bulk-actions" class="bulk" hidden>
           <button class="icon-btn" type="button" data-bulk="archive" title="Archiver" aria-label="Archiver" data-icon="archive"></button>
           <button class="icon-btn" type="button" data-bulk="unarchive" title="Remettre dans la boîte de réception" aria-label="Désarchiver" data-icon="unarchive"></button>
@@ -152,7 +155,7 @@
         </label>
         <label class="field"><span>Offres max. par site</span><input name="max_per_source" type="number" min="10" max="300" step="1"></label>
       </div>
-      <label class="check"><input name="fle_only" type="checkbox"> Uniquement les stages FLE (enseignement du français, assistanat de langue, Alliance / Institut français, DELF…)</label>
+      <label class="check"><input name="fle_only" type="checkbox"> Uniquement les stages FLE, sans les offres d'emploi (enseignement du français, assistanat de langue, Alliance / Institut français, DELF…)</label>
       <div id="find-error" class="form-error" hidden></div>
       <div class="dialog-actions">
         <button type="button" class="btn" data-close>Annuler</button>
@@ -179,6 +182,26 @@
         <div class="spacer"></div>
         <button type="button" class="btn" data-close>Fermer</button>
         <button type="submit" class="btn primary" id="directory-import">Importer la sélection</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Candidature spontanée -->
+  <dialog id="spontaneous-dialog" class="dialog">
+    <form method="dialog" id="spontaneous-form" novalidate>
+      <h2>Nouvelle candidature spontanée</h2>
+      <p class="muted">Pour un établissement absent de l'annuaire (Alliance française, école, université…). Elle sera suivie comme une offre : statut, notes, brouillon d'email, envoi.</p>
+      <label class="field"><span>Établissement *</span><input name="company" type="text" required maxlength="200" placeholder="ex. Alliance française de Tromsø"></label>
+      <div class="field-row">
+        <label class="field grow"><span>Email de contact</span><input name="email" type="email" maxlength="254" placeholder="contact@etablissement.org"></label>
+        <label class="field grow"><span>Ville, pays</span><input name="location" type="text" maxlength="200" placeholder="ex. Tromsø, Norvège"></label>
+      </div>
+      <label class="field"><span>Site web</span><input name="website" type="url" maxlength="2000" placeholder="https://…"></label>
+      <label class="field"><span>Notes (utiles pour l'IA)</span><textarea name="notes" rows="3" maxlength="5000" placeholder="ex. Cours pour adultes et enfants, centre d'examen DELF, contact : directrice pédagogique"></textarea></label>
+      <div id="spontaneous-error" class="form-error" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Annuler</button>
+        <button type="submit" class="btn primary">Ajouter</button>
       </div>
     </form>
   </dialog>
@@ -300,7 +323,7 @@
 
       <section class="tab-panel" data-panel="auto" hidden>
         <p class="muted">L'application peut chercher seule de nouvelles offres pendant qu'elle est ouverte, avec les critères de votre dernière recherche (mots-clés, lieu, sites). Les emails ne partent <strong>jamais</strong> sans vous : l'IA prépare seulement des brouillons, que vous relisez avant d'envoyer.</p>
-        <label class="check"><input name="fle_only" type="checkbox"> N'afficher et ne garder que les stages FLE</label>
+        <label class="check"><input name="fle_only" type="checkbox"> N'afficher et ne garder que les stages FLE (les offres d'emploi sont écartées)</label>
         <label class="check"><input name="auto_enabled" type="checkbox"> Chercher de nouvelles offres automatiquement</label>
         <div class="field-row">
           <label class="field"><span>Toutes les (heures)</span><input name="auto_interval_hours" type="number" min="1" max="168" step="1"></label>
@@ -308,6 +331,7 @@
         </div>
         <label class="check"><input name="auto_fetch_details" type="checkbox"> Lire la description des nouvelles offres (adresse du recruteur, thèmes FLE plus précis)</label>
         <label class="check"><input name="auto_draft" type="checkbox"> Préparer un brouillon d'email avec l'IA pour chaque nouvelle offre (serveur llama.cpp requis)</label>
+        <label class="check"><input name="auto_translate" type="checkbox"> Traduire en français le titre des nouvelles offres (serveur llama.cpp requis)</label>
         <div id="auto-status" class="auto-status"></div>
         <div class="field-row">
           <button type="button" class="btn tonal" id="auto-run"><span data-icon="refresh"></span>Enregistrer et lancer maintenant</button>

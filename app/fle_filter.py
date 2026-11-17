@@ -27,9 +27,13 @@ DEFAULT_QUERIES = (
 # LinkedIn comprend « OR » et les guillemets : une seule requête par lieu suffit, ce qui
 # divise par quatre le nombre d'appels (LinkedIn limite vite les requêtes sans compte).
 # « FLE » seul est exclu : LinkedIn y associe « Fleet » (gestion de flotte).
+# LinkedIn ignore son propre filtre « stage » (f_JT=I) : la requête exige donc un mot de
+# stage, sinon elle ne ramène que des postes d'enseignant.
 LINKEDIN_QUERY = (
-    '"French teacher" OR "French tutor" OR "French instructor" OR "French language assistant" '
-    'OR "français langue étrangère" OR "enseignant de français" OR "professeur de français"'
+    '("French teacher" OR "French teaching" OR "French tutor" OR "French language" OR FLE '
+    'OR "français langue étrangère" OR "enseignement du français" OR "Alliance Française") '
+    'AND (internship OR intern OR stage OR stagiaire OR praktik OR praktikant OR harjoittelu '
+    'OR stagiair OR trainee OR "co-op")'
 )
 
 # Lieux proposés par défaut : pays nordiques, Europe du Nord, Canada. Séparés par « ; »
@@ -152,3 +156,95 @@ def split_locations(value: str | None) -> list[str]:
     """« Sweden; Norway ; Canada » -> ["Sweden", "Norway", "Canada"] (sans doublons)."""
     parts = [p.strip() for p in re.split(r"[;\n]", value or "")]
     return list(dict.fromkeys(p for p in parts if p)) or [""]
+
+
+# Mots qui signent un titre français (« de », « en » sont aussi néerlandais ou suédois).
+_FRENCH_MARKERS = re.compile(
+    r"\b(stage|stagiaire|enseignant|enseignante|professeur|professeure|formateur|formatrice|"
+    r"francais|francaise|ecole|lycee|universite|candidature|spontanee|h/f|f/h|alternance|"
+    r"assistant de langue|responsable|coordinateur|coordinatrice)\b"
+)
+_FRENCH_WORDS = re.compile(r"\b(des|du|la|le|les|et|pour|au|aux|une|avec|dans)\b")
+
+
+def looks_french(text: str | None) -> bool:
+    folded = _fold(text)
+    if not folded:
+        return True
+    return bool(_FRENCH_MARKERS.search(folded)) or len(_FRENCH_WORDS.findall(folded)) >= 2
+
+
+# --------------------------------------------------------------------------- stage ou emploi
+
+# Un stage se reconnaît à son intitulé ou à son type de contrat, dans les langues des pays
+# visés. « stage » anglais (« early stage », « stage manager ») est écarté.
+_INTERNSHIP = re.compile(
+    r"\bstages?\b(?! manager| technician| hand)|\bstagiaires?\b|\binternships?\b|\bintern\b|"
+    r"\binterns\b|\btrainees?(ship)?\b|\bco-?op\b|\bpraktik(ant|anter|plats|platser)?\b|"
+    r"\bpraksis(plass|student)?\b|\bharjoittel(u|ija|ijat)\b|\bharjoitteluun\b|\bstagiair(e|s)?\b|"
+    r"\bpraktikum\b|\bwork placement\b|\bplacement (etudiant|student)\b"
+)
+_NOT_INTERNSHIP = re.compile(r"\b(early|late|growth|seed|multi|back|front|next)[- ]stages?\b")
+# Dans une description : type de contrat annoncé, ou convention de stage.
+_INTERNSHIP_BODY = re.compile(
+    r"(type d.emploi|employment type|type de contrat|contract type) ?: ?(stage|internship)|"
+    r"convention de stage|internship agreement|stage de fin d.etudes|stage de \d+ ?(a \d+ )?mois"
+)
+
+
+# Titre d'une offre d'emploi : un « Type d'emploi : Stage » dans la description (que
+# LinkedIn attribue parfois à des remplacements) ne suffit pas à en faire un stage.
+_JOB_TITLE = re.compile(
+    r"\b\d+([.,]\d+)? ?fte\b|\bfte\b|\blto\b|long[- ]term occasional|\boccasional teacher\b|"
+    r"\bpermanent\b|\bfull[- ]time\b|\bpart[- ]time\b|\bcdi\b|\bcdd\b|\btillsvidare\b|"
+    r"\bfast anstallning\b|\bvikariat\b|\bfast stilling\b|\bvaste? (baan|aanstelling)\b|"
+    r"\bvakituinen\b|\bsijaisuus\b|\bterm (position|assignment)\b|\b100% term\b"
+)
+
+
+def _internship_words(text: str) -> int:
+    return len(_INTERNSHIP.findall(_NOT_INTERNSHIP.sub(" ", text)))
+
+
+def is_internship(title: str | None, contract: str | None = "", description: str | None = None) -> bool:
+    """Vrai pour un stage, faux pour une offre d'emploi (CDI, CDD, poste d'enseignant…)."""
+    head = _fold(f"{title or ''} | {contract or ''}")
+    if _internship_words(head):
+        return True
+    if _JOB_TITLE.search(_fold(title)):
+        return False
+    body = _fold(description)
+    return bool(body) and (bool(_INTERNSHIP_BODY.search(body)) or _internship_words(body) >= 3)
+
+
+# --------------------------------------------------------------------------- lieux
+
+# HelloWork et Welcome to the Jungle ne publient que des offres en France : un lieu
+# étranger y est remplacé par « toute la France » au lieu de ne rien trouver.
+FRANCE_ONLY_SOURCES = ("hellowork", "wttj")
+_FOREIGN_PLACES = {
+    _fold(name) for name in (
+        "Sweden", "Suède", "Sverige", "Norway", "Norvège", "Norge", "Denmark", "Danemark", "Danmark",
+        "Finland", "Finlande", "Suomi", "Iceland", "Islande", "Ísland", "Estonia", "Estonie", "Latvia",
+        "Lettonie", "Lithuania", "Lituanie", "Netherlands", "Pays-Bas", "Nederland", "Belgium", "Belgique",
+        "Ireland", "Irlande", "United Kingdom", "Royaume-Uni", "UK", "Scotland", "Écosse", "Canada",
+        "Québec", "Quebec", "Ontario", "Germany", "Allemagne", "Nordics", "Scandinavia", "Scandinavie",
+        "Europe", "Stockholm", "Oslo", "Copenhagen", "Copenhague", "Helsinki", "Reykjavik", "Tallinn",
+        "Riga", "Vilnius", "Amsterdam", "Dublin", "London", "Londres", "Montréal", "Montreal", "Toronto",
+        "Vancouver", "Ottawa",
+    )
+}
+
+
+def is_foreign_place(location: str) -> bool:
+    first = _fold(location).split(",")[0].strip()
+    return first in _FOREIGN_PLACES
+
+
+def locations_for(source: str, value: str | None) -> list[str]:
+    """Lieux à interroger sur ``source`` (les sites français ignorent les lieux étrangers)."""
+    locations = split_locations(value)
+    if source not in FRANCE_ONLY_SOURCES:
+        return locations
+    french = [loc for loc in locations if loc and not is_foreign_place(loc)]
+    return french or ["France"]

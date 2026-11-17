@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from starlette.concurrency import run_in_threadpool
 
-from . import fle_filter, assistant, config, db, llm
+from . import fle_filter, assistant, config, db, llm, translate
 from .scrapers import SEARCHERS, ScrapedOffer, SearchParams, SourceError, fetch_details, make_client
 
 log = logging.getLogger("internship_applier")
@@ -92,7 +92,7 @@ class Automation:
     ) -> SourceOutcome:
         outcome = SourceOutcome(source)
         merged: dict[str, ScrapedOffer] = {}
-        locations = fle_filter.split_locations(params.location)
+        locations = fle_filter.locations_for(source, params.location)
         queries = queries_for(params.keywords, fle_only, source)
         combos = [(loc, q) for loc in locations for q in queries]
         # « Offres max. par site » est réparti entre les recherches : sinon chaque lieu
@@ -116,8 +116,10 @@ class Automation:
             if outcome.error:
                 break
         outcome.found = len(merged)
+        # Filtre FLE : thème FLE *et* stage (LinkedIn mélange stages et offres d'emploi).
         outcome.offers = [
-            o for o in merged.values() if not fle_only or fle_filter.is_fle_offer(o.title)
+            o for o in merged.values()
+            if not fle_only or (fle_filter.is_fle_offer(o.title) and fle_filter.is_internship(o.title, o.contract))
         ]
         return outcome
 
@@ -242,10 +244,46 @@ class Automation:
             self.running = None
         return {"drafted": drafted, "error": error}
 
+    async def translate_titles(self, settings: dict[str, Any], offer_ids: list[int] | None = None) -> dict[str, Any]:
+        """Traduit en français les titres en attente (ceux de ``offer_ids``, ou tous).
+
+        Sans serveur llama.cpp, renvoie l'erreur sans rien changer : la traduction
+        reste possible plus tard depuis la liste ou la fiche de l'offre.
+        """
+        pending = await run_in_threadpool(self._untranslated, offer_ids)
+        if not pending:
+            return {"translated": 0, "error": None}
+        self.running = "translate"
+        try:
+            async with httpx.AsyncClient() as client:
+                titles = await translate.translate_titles(settings, [p["title"] for p in pending], client)
+        except llm.LLMError as exc:
+            return {"translated": 0, "error": str(exc)}
+        finally:
+            self.running = None
+
+        def save() -> int:
+            done = 0
+            with db.get_conn() as conn:
+                for item, title_fr in zip(pending, titles):
+                    if title_fr:
+                        db.set_translation(conn, item["id"], title_fr=title_fr)
+                        done += 1
+            return done
+
+        return {"translated": await run_in_threadpool(save), "error": None}
+
+    @staticmethod
+    def _untranslated(offer_ids: list[int] | None) -> list[dict[str, Any]]:
+        with db.get_conn() as conn:
+            return db.untranslated_titles(conn, ids=offer_ids, limit=200)
+
     async def process_new(self, settings: dict[str, Any], offer_ids: list[int]) -> dict[str, Any]:
-        summary: dict[str, Any] = {"details": 0, "drafted": 0, "draft_error": None}
+        summary: dict[str, Any] = {"details": 0, "drafted": 0, "draft_error": None, "translated": 0}
         if not offer_ids:
             return summary
+        if settings.get("auto_translate"):
+            summary["translated"] = (await self.translate_titles(settings, offer_ids))["translated"]
         if settings.get("auto_fetch_details") or settings.get("auto_draft"):
             summary["details"] = await self.fetch_new_details(offer_ids)
         if settings.get("auto_draft"):

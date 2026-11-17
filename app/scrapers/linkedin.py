@@ -63,12 +63,21 @@ def parse_search_page(html: str) -> list[ScrapedOffer]:
                 title=title,
                 company=clean(company_el.get_text()) if company_el else "",
                 location=clean(location_el.get_text()) if location_el else "",
-                contract="Stage",
+                contract="",
                 logo_url=logo_url if logo_url.startswith("https://media.licdn.com/") else "",
                 published_at=published,
             )
         )
     return offers
+
+
+def employment_type(criteria: list[str]) -> str:
+    """« Type d'emploi : Stage » -> « Stage » (vide si LinkedIn ne le précise pas)."""
+    for line in criteria:
+        name, _, value = line.partition(" : ")
+        if value and name.casefold().replace("’", "'") in ("type d'emploi", "employment type"):
+            return value
+    return ""
 
 
 def parse_detail_page(html: str) -> OfferDetails:
@@ -94,7 +103,7 @@ def parse_detail_page(html: str) -> OfferDetails:
         title=text_of(".top-card-layout__title"),
         company=text_of(".topcard__org-name-link") or text_of(".topcard__flavor"),
         location=text_of(".topcard__flavor--bullet"),
-        contract="Stage",
+        contract=employment_type(criteria),
     )
 
 

@@ -8,9 +8,14 @@ candidatures et rédiger les emails avec un modèle local (llama.cpp).
   d'universités, de lycées français et de ressources (Suède, Norvège, Danemark, Finlande, Islande,
   pays baltes, Pays-Bas, Irlande, Royaume-Uni, Canada). Un clic les importe dans la boîte de réception
   comme **candidatures spontanées**, avec l'adresse de contact quand elle est publique.
-- **Recherche** sur LinkedIn (par défaut), HelloWork et Welcome to the Jungle, sur **plusieurs lieux à
-  la fois** (« Sweden; Norway; Canada »), ou ajout d'une offre par son lien (FLE.fr, Fondation des
-  Alliances françaises…).
+- **Recherche** sur LinkedIn (étranger), HelloWork et Welcome to the Jungle (France), sur **plusieurs
+  lieux à la fois** (« Sweden; Norway; Canada »), ou ajout d'une offre par son lien (FLE.fr, Fondation
+  des Alliances françaises, Indeed…).
+- **Stages uniquement** : les offres d'emploi (postes d'enseignant, CDI, remplacements) sont écartées.
+- **Candidatures spontanées** suivies à part : dossier dédié, création en un clic (annuaire ou
+  formulaire), statistiques séparées dans le tableau de bord.
+- **Traduction en français** des titres et descriptions (suédois, néerlandais, anglais…) par le modèle
+  local : la liste affiche la traduction, l'original reste consultable.
 - **Filtre FLE** : seules les offres d'enseignement du français sont gardées (FLE/FLS, enseignement du
   français, assistanat de langue, Alliance / Institut français, DELF/DALF, didactique, immersion).
   Les motifs couvrent le français, l'anglais et quelques formes nordiques et néerlandaises
@@ -54,6 +59,26 @@ du site. Plusieurs établissements publient déjà des offres de stage FLE : All
 d'Ottawa, d'Edmonton, de Calgary et de Dublin, Institut français de Lituanie, Institut français du
 Royaume-Uni. Pour ajouter un établissement, ajoutez une entrée au fichier JSON (champ `id` unique).
 
+## Candidatures spontanées
+
+Le dossier **Candidatures spontanées** regroupe les établissements importés depuis l'annuaire, ceux
+ajoutés avec **Nouvelle candidature spontanée** (établissement, email, site, notes) et toute offre
+marquée « Candidature spontanée » dans sa fiche. Elles se suivent comme les offres (statut, notes,
+brouillon, envoi) ; le tableau de bord compare envois, réponses et entretiens entre candidatures
+spontanées et réponses à une offre.
+
+## Traduction en français
+
+Les titres en français sont gardés tels quels ; les autres sont traduits par le serveur llama.cpp
+(rien ne part sur Internet). La traduction se fait :
+
+- automatiquement après chaque recherche (**Paramètres > Automatisation**, coché par défaut) ;
+- avec le bouton **Traduire N titres** de la barre d'outils (offres déjà en base) ;
+- pour la description, avec **Traduire en français** dans la fiche de l'offre (« Voir l'original »
+  rebascule sur le texte d'origine).
+
+Sans serveur llama.cpp lancé, la liste affiche les titres d'origine et un message l'indique.
+
 ## Filtre « stages FLE »
 
 Le détecteur (`app/fle_filter.py`) lit le titre de l'offre, puis sa description quand elle est connue.
@@ -71,6 +96,27 @@ Le lieu par défaut est `Sweden; Norway; Denmark; Finland; Iceland; Estonia; Net
 Canada`. Le nombre « Offres max. par site » est réparti entre les lieux, et une pause de 1,5 s
 sépare les requêtes LinkedIn : une recherche sur les 9 pays prend environ 30 secondes. Si LinkedIn
 répond HTTP 429, raccourcissez la liste ou espacez les recherches automatiques.
+
+### Stage ou offre d'emploi
+
+LinkedIn ignore son propre filtre « stage » : il mélange stages et postes d'enseignant. Une offre
+n'est gardée que si son titre ou son contrat dit « stage » (stage, stagiaire, intern, internship,
+trainee, co-op, praktik, praktikant, harjoittelija, stagiair…), ou si sa description annonce un
+stage (« Type d'emploi : Stage », convention de stage). Un titre d'emploi (FTE, LTO, CDI, CDD,
+permanent, tillsvidare, vikariat…) l'emporte sur l'étiquette « Stage » que LinkedIn attribue parfois
+à des remplacements. Ces deux détecteurs sont recalculés pour toute la base à chaque démarrage.
+
+Les stages FLE publiés sont rares : à l'étranger, la plupart s'obtiennent par candidature spontanée
+(voir l'annuaire).
+
+### Sites interrogés
+
+| Site | Couverture | Remarque |
+|---|---|---|
+| LinkedIn | monde | une requête « OR » par lieu, exigeant un mot de stage |
+| HelloWork | France | un lieu étranger est remplacé par « toute la France » |
+| Welcome to the Jungle | France | idem |
+| Indeed, JobTeaser | — | non pris en charge : ces sites bloquent les programmes automatiques (HTTP 403). Ajoutez leurs offres avec « Ajouter une offre par lien ». |
 
 ## Recherche automatique
 

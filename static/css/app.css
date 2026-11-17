@@ -314,6 +314,11 @@ body.sidebar-collapsed .nav a { padding: 0; justify-content: center; border-radi
 .topic-chip { background: var(--topic-bg); color: var(--topic-fg); font-weight: 500; }
 .row:not(.unread) .topic-chip { font-weight: 400; }
 .draft-chip { padding: 0; color: var(--st-refused); }
+.spontaneous-chip { background: var(--src-directory-bg); color: var(--src-directory); }
+.job-chip { border: 1px dashed var(--muted); color: var(--muted); font-weight: 400; }
+.spontaneous-toggle { margin-top: 10px; }
+#translate-btn { margin-left: 4px; }
+#translate-btn[hidden] { display: none; }
 .count-chip { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
 .chip-button { border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 400; }
 .chip-button:hover { background: var(--nav-hover); }

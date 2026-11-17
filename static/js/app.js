@@ -8,12 +8,12 @@ import {
 import { initCompose, openCompose } from "./compose.js";
 import { initDrawer, openDrawer, refreshDrawer } from "./drawer.js";
 import {
-  initDialogs, openFindDialog, openSettings, openAddDialog, openDirectoryDialog, getSettings, loadSettings, refreshAutomation,
+  initDialogs, openFindDialog, openSettings, openAddDialog, openDirectoryDialog, openSpontaneousDialog, getSettings, loadSettings, refreshAutomation,
 } from "./dialogs.js";
 import { renderStats } from "./stats.js";
 
 const $ = (id) => document.getElementById(id);
-const FOLDERS = ["inbox", "starred", "all", "archived", "unread"];
+const FOLDERS = ["inbox", "starred", "spontaneous", "all", "archived", "unread"];
 
 const state = {
   view: { folder: "inbox", status: null, source: null, key: "inbox" },
@@ -50,7 +50,7 @@ function viewTitle() {
   if (state.view.stats) return "Tableau de bord";
   if (status) return statusInfo(status).label;
   if (source) return sourceLabel(source);
-  return { inbox: "Boîte de réception", starred: "Favoris", all: "Toutes les offres", archived: "Archivées", unread: "Non lues" }[folder];
+  return { inbox: "Boîte de réception", starred: "Favoris", spontaneous: "Candidatures spontanées", all: "Toutes les offres", archived: "Archivées", unread: "Non lues" }[folder];
 }
 
 function sourceLabel(source) {
@@ -150,6 +150,7 @@ async function loadCounts() {
   renderNav();
   // Le message « liste vide » dépend des compteurs, qui peuvent arriver après la liste.
   if (state.loadedOnce && !state.items.length) renderList();
+  renderTranslateButton();
 }
 
 export async function refreshAll() {
@@ -177,7 +178,7 @@ function renderRow(offer) {
     class: `row${offer.is_read ? "" : " unread"}${selected ? " selected" : ""}`,
     dataset: { id: offer.id, status: offer.status },
     tabindex: "0",
-    "aria-label": `${offer.title}, ${offer.company || "entreprise non précisée"}, ${offer.source_label}`,
+    "aria-label": `${displayTitle(offer)}, ${offer.company || "entreprise non précisée"}, ${offer.source_label}`,
   });
   const check = el("input", { type: "checkbox", class: "row-check", dataset: { action: "select" }, "aria-label": "Sélectionner" });
   check.checked = selected;
@@ -190,6 +191,10 @@ function renderRow(offer) {
       title: `${status.label}${offer.status_changed_at ? ` depuis le ${longDate(offer.status_changed_at)}` : ""} (cliquer pour changer)`,
       text: status.short,
     }));
+  }
+  if (offer.is_spontaneous) chips.push(el("span", { class: "chip spontaneous-chip", text: "Spontanée", title: "Candidature spontanée (sans offre publiée)" }));
+  if (!offer.is_internship && !offer.is_spontaneous && !["manual", "directory"].includes(offer.source)) {
+    chips.push(el("span", { class: "chip job-chip", text: "Emploi", title: "Offre d'emploi, pas un stage (visible car le filtre « stages FLE uniquement » est désactivé)" }));
   }
   if (offer.has_draft) chips.push(el("span", { class: "chip draft-chip", text: "Brouillon", title: "Un brouillon d'email est enregistré" }));
   for (const topic of (offer.fle_topics || []).slice(0, 2)) {
@@ -212,7 +217,11 @@ function renderRow(offer) {
     el("span", { class: "row-company", text: offer.company || "Entreprise non précisée", title: offer.company || "" }),
     el("span", { class: "row-main" }, [
       ...chips,
-      el("span", { class: "row-title", text: offer.title }),
+      el("span", {
+        class: "row-title",
+        text: displayTitle(offer),
+        title: displayTitle(offer) !== offer.title ? `Titre original : ${offer.title}` : null,
+      }),
       snippet ? el("span", { class: "row-snippet", text: ` — ${snippet}` }) : null,
     ]),
     el("span", { class: "row-date", text: shortDate(offer.published_at || offer.first_seen_at), title: dateTooltip(offer) }),
@@ -231,6 +240,33 @@ function renderRow(offer) {
   return row;
 }
 
+/** Titre affiché : la traduction française quand elle existe. */
+function displayTitle(offer) {
+  return offer.title_fr || offer.title;
+}
+
+function renderTranslateButton() {
+  const n = state.counts?.untranslated || 0;
+  $("translate-btn").hidden = !n || state.view.stats;
+  $("translate-label").textContent = `Traduire ${n} titre${n > 1 ? "s" : ""}`;
+}
+
+async function translateTitles() {
+  const button = $("translate-btn");
+  button.disabled = true;
+  $("translate-label").textContent = "Traduction en cours…";
+  try {
+    const result = await api("/api/translate/titles", { method: "POST" });
+    toast(`${result.translated} titre${result.translated > 1 ? "s" : ""} traduit${result.translated > 1 ? "s" : ""} en français.`);
+    await Promise.all([loadCounts(), loadOffers()]);
+  } catch (error) {
+    toast(error.message, { error: true, timeout: 9000 });
+  } finally {
+    button.disabled = false;
+    renderTranslateButton();
+  }
+}
+
 function renderList() {
   $("offer-list").replaceChildren(...state.items.map(renderRow));
   updateToolbar();
@@ -240,14 +276,14 @@ function renderList() {
   }
   const hidden = state.counts?.hidden_non_fle || 0;
   const hiddenNote = hidden
-    ? el("p", { class: "muted", text: `${hidden} offre${hidden > 1 ? "s" : ""} hors FLE ${hidden > 1 ? "sont masquées" : "est masquée"} (filtre « stages FLE uniquement » dans Paramètres > Automatisation).` })
+    ? el("p", { class: "muted", text: `${hidden} offre${hidden > 1 ? "s" : ""} hors stage FLE (offres d'emploi ou autres domaines) ${hidden > 1 ? "sont masquées" : "est masquée"} (filtre « stages FLE uniquement » dans Paramètres > Automatisation).` })
     : null;
   if (state.q) {
     showEmpty([el("p", { text: `Aucune offre ne correspond à « ${state.q} » dans ce dossier.` }), hiddenNote]);
   } else if (state.counts && state.counts.total === 0) {
     showEmpty([
       el("p", { class: "empty-title", text: "Aucune offre pour l'instant" }),
-      el("p", { class: "muted", text: "Lancez une recherche de stages en intelligence artificielle sur HelloWork, LinkedIn et Welcome to the Jungle, ou activez la recherche automatique. Pensez aussi à remplir votre profil dans les paramètres pour que l'IA rédige vos emails." }),
+      el("p", { class: "muted", text: "Lancez une recherche de stages FLE (LinkedIn pour l'étranger, HelloWork et Welcome to the Jungle pour la France), importez des établissements depuis l'annuaire FLE, ou activez la recherche automatique. Pensez aussi à remplir votre profil dans les paramètres pour que l'IA rédige vos emails." }),
       hiddenNote,
       el("div", { class: "empty-actions" }, [
         el("button", { type: "button", class: "btn primary", text: "Chercher des offres", onclick: () => openFindDialog() }),
@@ -564,6 +600,8 @@ function bindSidebar() {
   $("find-btn").addEventListener("click", () => openFindDialog());
   $("add-offer-btn").addEventListener("click", () => openAddDialog());
   $("directory-btn").addEventListener("click", () => openDirectoryDialog());
+  $("spontaneous-btn").addEventListener("click", () => openSpontaneousDialog());
+  $("translate-btn").addEventListener("click", translateTitles);
   $("settings-btn").addEventListener("click", () => openSettings());
   window.addEventListener("hashchange", () => {
     if (applySearchHash()) return;
@@ -571,6 +609,7 @@ function bindSidebar() {
     state.page = 1;
     state.selected.clear();
     markActiveNav();
+    renderTranslateButton();
     loadOffers();
   });
 }
@@ -668,7 +707,7 @@ async function pollAutomation() {
 async function init() {
   hydrateIcons();
   initCompose({ onChange: refreshAll });
-  initDrawer({ onChange: refreshAll, onCompose: openCompose, updateOffers });
+  initDrawer({ onChange: refreshAll, onCompose: openCompose, updateOffers, onTranslated: refreshAll });
   initDialogs({ onSearch: runSearch, onChange: refreshAll, onOpenOffer: openDrawer });
   bindList();
   bindToolbar();

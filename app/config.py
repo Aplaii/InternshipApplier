@@ -65,9 +65,9 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "search_keywords": "",
     # Plusieurs lieux séparés par « ; » : une recherche est lancée pour chacun.
     "search_location": "; ".join(fle_filter.DEFAULT_LOCATIONS),
-    # HelloWork et Welcome to the Jungle ne publient presque que des offres en France :
-    # seule LinkedIn est interrogée par défaut pour l'étranger.
-    "search_sources": ["linkedin"],
+    # HelloWork et Welcome to the Jungle ne publient que des offres en France : pour un lieu
+    # étranger, ils cherchent dans toute la France (voir fle_filter.locations_for).
+    "search_sources": list(SEARCH_SOURCES),
     "search_recency": "week",
     "search_max_per_source": 60,
     # Ne garder que les stages FLE (voir app/fle_filter.py).
@@ -78,6 +78,8 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "auto_fetch_details": True,     # lire la description des nouvelles offres
     "auto_draft": False,            # préparer un brouillon d'email avec l'IA (jamais envoyé seul)
     "auto_draft_max": 5,            # brouillons au plus par passage
+    # Traduire en français le titre des nouvelles offres (modèle local, si joignable).
+    "auto_translate": True,
     # État de la dernière recherche automatique (écrit par l'application, pas par l'utilisateur).
     "auto_last_run": "",
     "auto_last_summary": {},

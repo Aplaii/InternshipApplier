@@ -17,7 +17,7 @@ from typing import Any
 
 from . import fle_filter, config
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS offers (
@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS offers (
     draft_subject      TEXT    NOT NULL DEFAULT '',
     draft_body         TEXT    NOT NULL DEFAULT '',
     fle_topics          TEXT    NOT NULL DEFAULT '',
+    title_fr           TEXT,
+    description_fr     TEXT,
+    is_spontaneous     INTEGER NOT NULL DEFAULT 0,
+    is_internship      INTEGER NOT NULL DEFAULT 0,
     UNIQUE (source, source_id)
 );
 CREATE INDEX IF NOT EXISTS idx_offers_status ON offers (status);
@@ -69,28 +73,31 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
-FOLDERS = ("inbox", "unread", "starred", "archived", "all")
+FOLDERS = ("inbox", "unread", "starred", "spontaneous", "archived", "all")
 
 # Colonnes renvoyées pour la liste (sans la description ni le texte des brouillons).
 LIST_COLUMNS = """
     id, source, source_id, url, title, company, location, contract, logo_url,
     published_at, first_seen_at, status, status_changed_at, fle_topics,
-    is_read, is_starred, is_archived,
+    title_fr, is_spontaneous, is_internship, is_read, is_starred, is_archived,
     (draft_body != '') AS has_draft,
     (notes != '') AS has_notes,
     (SELECT COUNT(*) FROM emails e WHERE e.offer_id = offers.id) AS emails_count
 """
 
-# Offres retenues par le filtre « stages FLE uniquement ». Les offres ajoutées à la main
-# restent toujours visibles : l'utilisateur les a choisies lui-même.
-FLE_CLAUSE = "(fle_topics != '' OR source IN ('manual', 'directory'))"
+# Offres retenues par le filtre « stages FLE uniquement » : FLE *et* stage (les offres
+# d'emploi sont écartées). Les offres ajoutées à la main ou depuis l'annuaire restent
+# toujours visibles : l'utilisateur les a choisies lui-même.
+FLE_CLAUSE = "((fle_topics != '' AND is_internship = 1) OR source IN ('manual', 'directory'))"
 
 SORT_ORDER = "ORDER BY COALESCE(published_at, first_seen_at) DESC, id DESC"
 
-_BOOL_FIELDS = ("is_read", "is_starred", "is_archived", "has_draft", "has_notes")
+_BOOL_FIELDS = (
+    "is_read", "is_starred", "is_archived", "is_spontaneous", "is_internship", "has_draft", "has_notes",
+)
 _PATCHABLE = (
     "status", "is_read", "is_starred", "is_archived", "notes",
-    "draft_to", "draft_subject", "draft_body",
+    "draft_to", "draft_subject", "draft_body", "is_spontaneous",
 )
 
 
@@ -146,8 +153,25 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE offers RENAME COLUMN ai_topics TO fle_topics")
             else:  # version 1 : pas encore de thèmes
                 conn.execute("ALTER TABLE offers ADD COLUMN fle_topics TEXT NOT NULL DEFAULT ''")
-        if version < SCHEMA_VERSION:
-            refresh_fle_topics(conn)
+        columns = {r["name"] for r in conn.execute("PRAGMA table_info(offers)")}
+        for name, ddl in (
+            ("title_fr", "TEXT"), ("description_fr", "TEXT"),
+            ("is_spontaneous", "INTEGER NOT NULL DEFAULT 0"),
+            ("is_internship", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if name not in columns:  # versions 1 à 3
+                conn.execute(f"ALTER TABLE offers ADD COLUMN {name} {ddl}")
+        if version < 4:
+            conn.execute("UPDATE offers SET is_spontaneous = 1 WHERE source = 'directory'")
+        if version < 5:
+            # Jusqu'à la version 3, toute offre LinkedIn était marquée « Stage » d'office
+            # (LinkedIn ignore pourtant son filtre de stage) : on efface ce faux contrat
+            # avant de recalculer stage / emploi.
+            conn.execute("UPDATE offers SET contract = '' WHERE source = 'linkedin' AND contract = 'Stage'")
+        # Recalcul à chaque démarrage (rapide) : une amélioration des détecteurs FLE /
+        # stage s'applique ainsi aussi aux offres déjà enregistrées.
+        refresh_fle_topics(conn)
+        refresh_french_titles(conn)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -157,11 +181,30 @@ def _topics_value(title: str | None, description: str | None) -> str:
 
 
 def refresh_fle_topics(conn: sqlite3.Connection) -> None:
-    """Recalcule les thèmes FLE de toutes les offres (après une mise à jour du détecteur)."""
-    rows = conn.execute("SELECT id, title, description FROM offers").fetchall()
+    """Recalcule thèmes FLE et « stage » de toutes les offres (après une mise à jour du détecteur)."""
+    rows = conn.execute("SELECT id, title, contract, description FROM offers").fetchall()
     conn.executemany(
-        "UPDATE offers SET fle_topics = ? WHERE id = ?",
-        [(_topics_value(r["title"], r["description"]), r["id"]) for r in rows],
+        "UPDATE offers SET fle_topics = ?, is_internship = ? WHERE id = ?",
+        [(_topics_value(r["title"], r["description"]),
+          _internship_value(r["title"], r["contract"], r["description"]), r["id"]) for r in rows],
+    )
+
+
+def _internship_value(title: str | None, contract: str | None, description: str | None) -> int:
+    return int(fle_filter.is_internship(title, contract, description))
+
+
+def _french_title(title: str | None) -> str | None:
+    """Titre français stocké d'office (None = à traduire par le modèle)."""
+    return title if fle_filter.looks_french(title) else None
+
+
+def refresh_french_titles(conn: sqlite3.Connection) -> None:
+    """Recopie dans ``title_fr`` les titres déjà en français qui n'ont pas de traduction."""
+    rows = conn.execute("SELECT id, title FROM offers WHERE title_fr IS NULL").fetchall()
+    conn.executemany(
+        "UPDATE offers SET title_fr = ? WHERE id = ?",
+        [(r["title"], r["id"]) for r in rows if fle_filter.looks_french(r["title"])],
     )
 
 
@@ -193,28 +236,33 @@ def upsert_offers(conn: sqlite3.Connection, offers: Iterable[Any]) -> int:
     new_count = 0
     for offer in offers:
         row = conn.execute(
-            "SELECT id, description FROM offers WHERE source = ? AND source_id = ?",
+            "SELECT id, description, contract FROM offers WHERE source = ? AND source_id = ?",
             (offer.source, offer.source_id),
         ).fetchone()
         if row is None:
             conn.execute(
                 """INSERT INTO offers (source, source_id, url, title, company, location, contract,
-                                       logo_url, published_at, first_seen_at, last_seen_at, fle_topics)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                       logo_url, published_at, first_seen_at, last_seen_at, fle_topics,
+                                       title_fr, is_internship)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (offer.source, offer.source_id, offer.url, offer.title, offer.company,
                  offer.location, offer.contract, offer.logo_url, offer.published_at, now, now,
-                 _topics_value(offer.title, None)),
+                 _topics_value(offer.title, None), _french_title(offer.title),
+                 _internship_value(offer.title, offer.contract, None)),
             )
             new_count += 1
         else:
             conn.execute(
-                """UPDATE offers SET url = ?, title = ?, company = ?, location = ?, contract = ?,
+                """UPDATE offers SET title_fr = CASE WHEN title = ? THEN title_fr ELSE ? END,
+                          url = ?, title = ?, company = ?, location = ?, contract = ?,
                           logo_url = ?, published_at = COALESCE(?, published_at), last_seen_at = ?,
-                          fle_topics = ?
+                          fle_topics = ?, is_internship = ?
                    WHERE id = ?""",
-                (offer.url, offer.title, offer.company, offer.location, offer.contract,
+                (offer.title, _french_title(offer.title),
+                 offer.url, offer.title, offer.company, offer.location, offer.contract or row["contract"],
                  offer.logo_url, offer.published_at, now,
-                 _topics_value(offer.title, row["description"]), row["id"]),
+                 _topics_value(offer.title, row["description"]),
+                 _internship_value(offer.title, offer.contract or row["contract"], row["description"]), row["id"]),
             )
     return new_count
 
@@ -238,6 +286,8 @@ def list_offers(
         where.append("is_archived = 0 AND is_read = 0")
     elif folder == "starred":
         where.append("is_starred = 1")
+    elif folder == "spontaneous":
+        where.append("is_spontaneous = 1 AND is_archived = 0")
     elif folder == "archived":
         where.append("is_archived = 1")
     if status:
@@ -248,7 +298,8 @@ def list_offers(
         args.append(source)
     for term in normalize(q or "").split():
         where.append(
-            "norm(title || ' ' || company || ' ' || location || ' ' || contract) LIKE ? ESCAPE '\\'"
+            "norm(title || ' ' || COALESCE(title_fr, '') || ' ' || company || ' ' || location || ' ' || contract) "
+            "LIKE ? ESCAPE '\\'"
         )
         args.append(f"%{_escape_like(term)}%")
     clause = f"WHERE {' AND '.join(where)}" if where else ""
@@ -268,6 +319,7 @@ def counts(conn: sqlite3.Connection, *, fle_only: bool = False) -> dict[str, Any
                   COALESCE(SUM(is_archived = 0), 0) AS inbox,
                   COALESCE(SUM(is_archived = 0 AND is_read = 0), 0) AS unread,
                   COALESCE(SUM(is_starred = 1), 0) AS starred,
+                  COALESCE(SUM(is_spontaneous = 1 AND is_archived = 0), 0) AS spontaneous,
                   COALESCE(SUM(is_archived = 1), 0) AS archived
            FROM offers {scope}"""
     ).fetchone()
@@ -301,7 +353,7 @@ def stats(conn: sqlite3.Connection, *, fle_only: bool = False, weeks: int = 12) 
     """Chiffres du tableau de bord : entonnoir, activité hebdomadaire, sources, thèmes FLE."""
     scope = f"WHERE {FLE_CLAUSE}" if fle_only else ""
     rows = conn.execute(
-        f"""SELECT id, source, company, status, first_seen_at, fle_topics, is_archived,
+        f"""SELECT id, source, company, status, first_seen_at, fle_topics, is_archived, is_spontaneous,
                    (SELECT MIN(sent_at) FROM emails e WHERE e.offer_id = offers.id) AS first_sent_at
             FROM offers {scope}"""
     ).fetchall()
@@ -334,6 +386,15 @@ def stats(conn: sqlite3.Connection, *, fle_only: bool = False, weeks: int = 12) 
             entry["offers"] += 1
             entry["applied"] += r["status"] != "new"
 
+    def funnel(subset: list[sqlite3.Row]) -> dict[str, Any]:
+        sent = sum(1 for r in subset if r["status"] in ("sent", "answered", "refused", "interview"))
+        answered = sum(1 for r in subset if r["status"] in ("answered", "refused", "interview"))
+        return {
+            "total": len(subset), "applied": sent, "replies": answered,
+            "interviews": sum(1 for r in subset if r["status"] == "interview"),
+            "reply_rate": round(answered / sent, 3) if sent else None,
+        }
+
     applied_total = sum(by_status[s] for s in ("sent", "answered", "refused", "interview"))
     replies = sum(by_status[s] for s in ("answered", "refused", "interview"))
     topic_order = [t for t, _ in fle_filter.TOPICS]
@@ -352,6 +413,11 @@ def stats(conn: sqlite3.Connection, *, fle_only: bool = False, weeks: int = 12) 
         ],
         "weekly": [{"week": w, "found": found[w], "applied": applied[w]} for w in week_keys],
         "companies": sorted(companies.values(), key=lambda c: (-c["offers"], c["name"]))[:8],
+        # Candidatures spontanées et réponses à une offre publiée, suivies à part.
+        "by_kind": {
+            "spontaneous": funnel([r for r in rows if r["is_spontaneous"]]),
+            "offers": funnel([r for r in rows if not r["is_spontaneous"]]),
+        },
     }
 
 
@@ -393,17 +459,21 @@ def update_offers(conn: sqlite3.Connection, ids: list[int], changes: dict[str, A
     return cur.rowcount
 
 
-def insert_manual_offer(conn: sqlite3.Connection, offer: Any, description: str | None) -> int:
+def insert_manual_offer(
+    conn: sqlite3.Connection, offer: Any, description: str | None, *, spontaneous: bool = False
+) -> int:
     now = utcnow_iso()
     cur = conn.execute(
         """INSERT INTO offers (source, source_id, url, title, company, location, contract, logo_url,
                                published_at, first_seen_at, last_seen_at, description,
-                               details_fetched_at, is_read, fle_topics)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+                               details_fetched_at, is_read, fle_topics, title_fr, is_spontaneous,
+                               is_internship)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)""",
         (offer.source, offer.source_id, offer.url, offer.title, offer.company, offer.location,
          offer.contract, offer.logo_url, offer.published_at, now, now,
          description or None, now if description else None,
-         _topics_value(offer.title, description)),
+         _topics_value(offer.title, description), _french_title(offer.title), int(spontaneous),
+         _internship_value(offer.title, offer.contract, description)),
     )
     return int(cur.lastrowid)
 
@@ -415,14 +485,47 @@ def delete_offer(conn: sqlite3.Connection, offer_id: int) -> bool:
 def set_details(
     conn: sqlite3.Connection, offer_id: int, description: str, emails: list[str]
 ) -> None:
-    row = conn.execute("SELECT title FROM offers WHERE id = ?", (offer_id,)).fetchone()
-    topics = _topics_value(row["title"] if row else "", description)
+    row = conn.execute("SELECT title, contract FROM offers WHERE id = ?", (offer_id,)).fetchone()
+    title, contract = (row["title"], row["contract"]) if row else ("", "")
+    topics = _topics_value(title, description)
+    internship = _internship_value(title, contract, description)
     conn.execute(
-        """UPDATE offers SET description = ?, contact_emails = ?, details_fetched_at = ?,
-                             fle_topics = ?
+        """UPDATE offers SET description_fr = CASE WHEN description IS ? THEN description_fr END,
+                             description = ?, contact_emails = ?, details_fetched_at = ?,
+                             fle_topics = ?, is_internship = ?
            WHERE id = ?""",
-        (description, json.dumps(emails), utcnow_iso(), topics, offer_id),
+        (description, description, json.dumps(emails), utcnow_iso(), topics, internship, offer_id),
     )
+
+
+def set_translation(
+    conn: sqlite3.Connection, offer_id: int, *, title_fr: str | None = None, description_fr: str | None = None
+) -> None:
+    """Enregistre la traduction française du titre et/ou de la description."""
+    if title_fr:
+        conn.execute("UPDATE offers SET title_fr = ? WHERE id = ?", (title_fr.strip(), offer_id))
+    if description_fr:
+        conn.execute("UPDATE offers SET description_fr = ? WHERE id = ?", (description_fr.strip(), offer_id))
+
+
+def untranslated_titles(
+    conn: sqlite3.Connection, *, ids: list[int] | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Offres dont le titre attend une traduction (les plus récentes d'abord)."""
+    clause, args = "title_fr IS NULL", []
+    if ids is not None:
+        if not ids:
+            return []
+        clause += f" AND id IN ({','.join('?' for _ in ids)})"
+        args = list(ids)
+    rows = conn.execute(
+        f"SELECT id, title FROM offers WHERE {clause} {SORT_ORDER} LIMIT ?", [*args, limit]
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_untranslated(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) FROM offers WHERE title_fr IS NULL").fetchone()[0]
 
 
 def save_draft(conn: sqlite3.Connection, offer_id: int, subject: str, body: str) -> None:

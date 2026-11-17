@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Literal
@@ -21,7 +22,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from . import __version__, assistant, config, db, documents, institutions, llm, mailer, prompts
+from . import __version__, assistant, config, db, documents, institutions, llm, mailer, prompts, translate
 from .automation import Automation
 from .scrapers import (
     ScrapedOffer, SearchParams, SourceError, fetch_details, identify_url, make_client,
@@ -34,7 +35,7 @@ log = logging.getLogger("internship_applier")
 Status = Literal["new", "sent", "answered", "refused", "interview"]
 SearchSource = Literal["hellowork", "linkedin", "wttj"]
 Recency = Literal["day", "3days", "week", "month", "all"]
-Folder = Literal["inbox", "unread", "starred", "archived", "all"]
+Folder = Literal["inbox", "unread", "starred", "spontaneous", "archived", "all"]
 
 APP_HEADER = "InternshipApplier"
 
@@ -53,6 +54,7 @@ class OfferPatch(BaseModel):
     draft_subject: str | None = Field(None, max_length=1000)
     draft_body: str | None = Field(None, max_length=100000)
     description: str | None = Field(None, max_length=100000)
+    is_spontaneous: bool | None = None
 
 
 class BulkPatch(BaseModel):
@@ -62,6 +64,7 @@ class BulkPatch(BaseModel):
     is_read: bool | None = None
     is_starred: bool | None = None
     is_archived: bool | None = None
+    is_spontaneous: bool | None = None
 
 
 class FetchRequest(BaseModel):
@@ -84,6 +87,15 @@ class ManualOfferIn(BaseModel):
     location: str = Field("", max_length=200)
     contract: str = Field("", max_length=200)
     description: str = Field("", max_length=100000)
+
+
+class SpontaneousIn(BaseModel):
+    """Candidature spontanée auprès d'un établissement absent de l'annuaire."""
+    company: str = Field(min_length=1, max_length=200)
+    email: str = Field("", max_length=254)
+    website: str = Field("", max_length=2000)
+    location: str = Field("", max_length=200)
+    notes: str = Field("", max_length=5000)
 
 
 class InstitutionImport(BaseModel):
@@ -140,6 +152,7 @@ class SettingsUpdate(BaseModel):
     auto_fetch_details: bool | None = None
     auto_draft: bool | None = None
     auto_draft_max: int | None = Field(None, ge=1, le=30)
+    auto_translate: bool | None = None
 
 
 # --------------------------------------------------------------------------- sécurité locale
@@ -310,7 +323,10 @@ def create_app() -> FastAPI:
     def get_counts() -> dict[str, Any]:
         fle_only = _fle_only()
         with db.get_conn() as conn:
-            return {**db.counts(conn, fle_only=fle_only), "fle_only": fle_only}
+            return {
+                **db.counts(conn, fle_only=fle_only), "fle_only": fle_only,
+                "untranslated": db.count_untranslated(conn),
+            }
 
     @app.get("/api/stats")
     def get_stats() -> dict[str, Any]:
@@ -399,6 +415,75 @@ def create_app() -> FastAPI:
                 db.set_details(conn, offer_id, description, extract_emails(description))
             created = db.get_offer(conn, offer_id)
         return _with_label(created)
+
+    @app.post("/api/spontaneous", status_code=201)
+    def create_spontaneous(req: SpontaneousIn) -> dict[str, Any]:
+        company = clean(req.company)
+        email = req.email.strip()
+        website = _check_url(req.website) if req.website.strip() else ""
+        if email and not re.fullmatch(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+", email):
+            raise HTTPException(422, "Adresse email invalide.")
+        key = website or email.lower() or db.normalize(company)
+        offer = ScrapedOffer(
+            source="manual", source_id=f"spontaneous:{key}", url=website,
+            title=institutions.OFFER_TITLE, company=company, location=clean(req.location),
+            contract=institutions.CONTRACT,
+        )
+        description = institutions.description_for({
+            "name": company, "kind": "Candidature spontanée", "city": offer.location,
+            "notes": req.notes.strip(), "website": website,
+        })
+        with db.get_conn() as conn:
+            existing = db.find_offer_id(conn, offer.source, offer.source_id)
+            if existing is not None:
+                raise HTTPException(409, {"message": "Cette candidature spontanée existe déjà.", "id": existing})
+            offer_id = db.insert_manual_offer(conn, offer, description, spontaneous=True)
+            db.set_details(conn, offer_id, description, [email] if email else [])
+            if email:
+                db.update_offers(conn, [offer_id], {"draft_to": email})
+            created = db.get_offer(conn, offer_id)
+        return _with_label(created)
+
+    # ------------------------------------------------------------------- traduction
+
+    @app.post("/api/offers/{offer_id}/translate")
+    async def translate_offer(offer_id: int) -> dict[str, Any]:
+        """Traduit en français le titre et la description d'une offre (modèle local)."""
+        offer = await run_in_threadpool(_get_offer_or_404, offer_id)
+        settings = await run_in_threadpool(_load_settings)
+        title_fr = description_fr = None
+        try:
+            async with httpx.AsyncClient() as client:
+                if not offer.get("title_fr"):
+                    [title_fr] = await translate.translate_titles(settings, [offer["title"]], client)
+                if offer.get("description") and not offer.get("description_fr"):
+                    if translate.looks_french(offer["description"][:600]):
+                        description_fr = offer["description"]
+                    else:
+                        description_fr = await translate.translate_text(settings, offer["description"], client)
+        except llm.LLMError as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+        def save() -> dict[str, Any]:
+            with db.get_conn() as conn:
+                db.set_translation(conn, offer_id, title_fr=title_fr, description_fr=description_fr)
+                return db.get_offer(conn, offer_id)
+
+        return _with_label(await run_in_threadpool(save))
+
+    @app.post("/api/translate/titles")
+    async def translate_pending_titles() -> dict[str, Any]:
+        """Traduit les titres en attente (jusqu'à 200 par appel)."""
+        settings = await run_in_threadpool(_load_settings)
+        result = await automation.translate_titles(settings)
+        if result["error"]:
+            raise HTTPException(503, result["error"])
+
+        def remaining() -> int:
+            with db.get_conn() as conn:
+                return db.count_untranslated(conn)
+
+        return {**result, "remaining": await run_in_threadpool(remaining)}
 
     # ------------------------------------------------------------------- annuaire FLE
 

@@ -24,7 +24,7 @@ const int = (v) => parseInt(v, 10);
 const NUMBER_KEYS = {
   llm_temperature: parseFloat, llm_max_tokens: int, smtp_port: int, auto_interval_hours: parseFloat, auto_draft_max: int,
 };
-const BOOL_KEYS = ["llm_disable_thinking", "smtp_bcc_self", "fle_only", "auto_enabled", "auto_fetch_details", "auto_draft"];
+const BOOL_KEYS = ["llm_disable_thinking", "smtp_bcc_self", "fle_only", "auto_enabled", "auto_fetch_details", "auto_draft", "auto_translate"];
 const SECRET_KEYS = ["llm_api_key", "smtp_password"];
 
 export function getSettings() {
@@ -488,6 +488,46 @@ function bindSettingsDialog() {
   });
 }
 
+// --------------------------------------------------------------------------- candidature spontanée
+
+export function openSpontaneousDialog() {
+  $("spontaneous-form").reset();
+  showFormError("spontaneous-error", "");
+  $("spontaneous-dialog").showModal();
+  $("spontaneous-form").elements.company.focus();
+}
+
+function bindSpontaneousDialog() {
+  const dialog = $("spontaneous-dialog");
+  const form = $("spontaneous-form");
+  closeOnCancel(dialog);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    showFormError("spontaneous-error", "");
+    const payload = Object.fromEntries(["company", "email", "website", "location", "notes"]
+      .map((key) => [key, form.elements[key].value.trim()]));
+    if (!payload.company) {
+      showFormError("spontaneous-error", "Le nom de l'établissement est obligatoire.");
+      return;
+    }
+    try {
+      const offer = await api("/api/spontaneous", { method: "POST", json: payload });
+      dialog.close();
+      toast("Candidature spontanée ajoutée : rédigez l'email depuis sa fiche.");
+      await ctx.onChange();
+      ctx.onOpenOffer(offer.id);
+    } catch (error) {
+      if (error.status === 409 && error.data?.detail?.id) {
+        dialog.close();
+        ctx.onOpenOffer(error.data.detail.id);
+        toast(error.message);
+        return;
+      }
+      showFormError("spontaneous-error", error.message);
+    }
+  });
+}
+
 // --------------------------------------------------------------------------- annuaire FLE
 
 let directory = null; // { updated, note, items }
@@ -615,5 +655,6 @@ export function initDialogs(options) {
   bindFindDialog();
   bindAddDialog();
   bindDirectoryDialog();
+  bindSpontaneousDialog();
   bindSettingsDialog();
 }

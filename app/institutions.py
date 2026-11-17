@@ -80,7 +80,7 @@ def import_ids(conn: sqlite3.Connection, ids: list[str]) -> dict[str, Any]:
             skipped += 1
             continue
         description = description_for(inst)
-        offer_id = db.insert_manual_offer(conn, to_offer(inst), description)
+        offer_id = db.insert_manual_offer(conn, to_offer(inst), description, spontaneous=True)
         email = (inst.get("email") or "").strip()
         db.set_details(conn, offer_id, description, [email] if email else [])
         if email:

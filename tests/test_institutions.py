@@ -73,10 +73,30 @@ def test_search_runs_once_per_location_and_query(client, monkeypatch, no_sleep):
     assert seen == [("Sweden", "FLE", 30), ("Canada", "FLE", 30)]
     assert result["new_total"] == 2
     assert client.get("/api/settings").json()["search_location"] == "Sweden; Canada"
-    assert config.DEFAULT_SETTINGS["search_sources"] == ["linkedin"]
+    assert config.DEFAULT_SETTINGS["search_sources"] == ["hellowork", "linkedin", "wttj"]
 
     # Sans mot-clé : une seule requête LinkedIn par lieu.
     seen.clear()
     client.post("/api/fetch", json={"sources": ["linkedin"], "location": "Sweden; Norway; Canada"})
     assert [(loc, kw) for loc, kw, _ in seen] == [(loc, fle_filter.LINKEDIN_QUERY) for loc in ("Sweden", "Norway", "Canada")]
     assert {n for *_, n in seen} == {20}
+
+
+def test_french_boards_search_france_for_foreign_places():
+    assert fle_filter.locations_for("hellowork", "Sweden; Norway; Canada") == ["France"]
+    assert fle_filter.locations_for("wttj", "Sweden; Lyon") == ["Lyon"]
+    assert fle_filter.locations_for("linkedin", "Sweden; Lyon") == ["Sweden", "Lyon"]
+    assert fle_filter.locations_for("hellowork", "") == ["France"]
+    assert fle_filter.locations_for("hellowork", "Montréal, QC") == ["France"]
+
+
+def test_search_hellowork_in_france_when_location_is_abroad(client, monkeypatch):
+    seen = []
+
+    async def search(_client, params):
+        seen.append(params.location)
+        return []
+
+    monkeypatch.setitem(SEARCHERS, "hellowork", search)
+    client.post("/api/fetch", json={"sources": ["hellowork"], "keywords": "FLE", "location": "Sweden; Canada"})
+    assert seen == ["France"]
